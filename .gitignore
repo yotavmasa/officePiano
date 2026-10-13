@@ -1,0 +1,18 @@
+# Local music, sheet originals, database, private LAN key, and conversion jobs
+/data/
+# Installed dependencies and build products
+/vendor/
+/tools/Audiveris.app/
+/tools/tessdata/
+/tools/*.dmg
+/native/midi
+/midi
+/ui-dist/
+/web/node_modules/
+/.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
+.env
+.env.*
+/.build/

@@ -1,0 +1,11 @@
+Audiveris 5.11.0 (unmodified official macOS arm64 application with bundled Java runtime)
+Download: https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-macosx-arm64.dmg
+Corresponding source: https://github.com/Audiveris/audiveris/tree/5.11.0
+License: GNU Affero General Public License version 3; license files retained in application bundle.
+
+English Tesseract OCR model (includes legacy mode required by Audiveris)
+Download: https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/eng.traineddata
+Source/model repository: https://github.com/tesseract-ocr/tessdata
+License: Apache License 2.0.
+
+These tools run locally. Recognition can misread notes/rhythms, especially low-resolution photos and complex scores. Each named PDF piece is converted independently using its selected pages; multiple exported movements are rejected with an actionable message. Original source files are retained.

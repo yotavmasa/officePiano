@@ -1,0 +1,50 @@
+"""Search MIDI catalogs independently so one unavailable site does not hide the other."""
+from concurrent.futures import ThreadPoolExecutor
+from itertools import zip_longest
+import urllib.parse
+from . import bitmidi
+from . import freemidi
+
+PROVIDERS = {'bitmidi': bitmidi, 'freemidi': freemidi}
+LABELS = {'bitmidi': 'BitMidi', 'freemidi': 'FreeMidi'}
+
+
+def search(query, page=1, source='bitmidi'):
+    if not isinstance(query, str) or not 1 <= len(query.strip()) <= 120:
+        raise ValueError('Enter a song, artist, or composer to search.')
+    if type(page) is not int or not 1 <= page <= 1000:
+        raise ValueError('Choose a valid results page.')
+    if source not in (*PROVIDERS, 'both'):
+        raise ValueError('Choose BitMidi, FreeMidi, or both.')
+    names = list(PROVIDERS) if source == 'both' else [source]
+    def fetch(name):
+        try:
+            result = PROVIDERS[name].search(query, page)
+            return name, result, ''
+        except ValueError as exc:
+            return name, None, LABELS[name] + ': ' + str(exc)
+    with ThreadPoolExecutor(max_workers=len(names)) as workers:
+        found = list(workers.map(fetch, names))
+    warnings = [error for _, _, error in found if error]
+    successes = [(name, result) for name, result, _ in found if result is not None]
+    warnings.extend(LABELS[name] + ': ' + warning for name, result in successes for warning in result.get('warnings', []))
+    if not successes:
+        raise ValueError(' '.join(warnings))
+    batches = [[dict(item, source=name, source_name=LABELS[name]) for item in result['results']] for name, result in successes]
+    results = [item for group in zip_longest(*batches) for item in group if item is not None]
+    return {'ok': True, 'results': results, 'page': page, 'source': source,
+            'sources': [name for name, _ in successes], 'warnings': warnings,
+            'total_matches': sum(result['total_matches'] for _, result in successes) if all(type(result.get('total_matches')) is int for _, result in successes) else None,
+            'checked': sum(result.get('checked', 0) for _, result in successes),
+            'has_more': any(result.get('has_more') for _, result in successes)}
+
+
+def download(url):
+    if not isinstance(url, str) or len(url) > 1000:
+        raise ValueError('Choose a valid MIDI song page.')
+    host = urllib.parse.urlsplit(url).hostname
+    if host in ('bitmidi.com', 'www.bitmidi.com'):
+        return bitmidi.download(url)
+    if host in ('freemidi.org', 'www.freemidi.org'):
+        return freemidi.download(url)
+    raise ValueError('Choose a song from BitMidi or FreeMidi.')

@@ -1,0 +1,147 @@
+OFFICE PIANO — React + Vite / PianoDisc Prodigy II
+
+OPEN THE APP
+Double-click Start Piano Remote.command and keep its window open.
+On this Mac, open http://localhost:52863/.
+The Player is the first page and first sidebar item. It starts with
+"Waiting for a song"; opening the app never starts playback.
+The online badge counts connected browsers, with duplicate tabs in the same
+browser counted once. Closed browsers disappear within 90 seconds.
+
+YOUR MUSIC
+Discover searches BitMidi, FreeMidi, or both, using the Source selector.
+Your choice is remembered locally. Results identify their source and mark
+piano-only MIDI. Both sites are searched independently; if one is unavailable,
+the other site’s results remain visible with a message. Next results pages
+cover the matches returned by each site. FreeMidi search also follows
+matched artist catalogs and their pagination. Its result count shows how many
+songs are displayed out of the full found set; use Load more songs for more.
+Incomplete catalogs or broad-query limits produce a visible message. Press Save song, then choose All songs or a named library. You can save valid MIDI containing other instruments too;
+those files stay marked Other MIDI and can play or enter the queue.
+Upload MIDI is on All songs and accepts multiple .mid/.midi files.
+Uploads save only to the library; they do not load a song or add it to a queue.
+Valid files remain saved if another file fails, with a result summary.
+Heart buttons save favorites; folder buttons assign library membership.
+Use the + button beside Your libraries to create a collection.
+Download buttons give you a copy of the original MIDI.
+Trash buttons remove a song from all libraries and the queue. Undo restores
+it; deleted files are retained in data/trash. Deleting the playing song stops it.
+Mobile navigation floats at the bottom with icons.
+
+PLAYBACK SOUND (EXPERIMENTAL)
+Click a saved song title to choose its playback sound before playing,
+or open Playback sound below the Player.
+Original keeps all parts. Piano parts only extracts piano/keyboard programs.
+Smart prefers piano parts; otherwise it tries a melody plus bass and skips drums.
+Choose parts shows the instrument list, so you can select parts yourself.
+Adapted parts become acoustic piano; out-of-range notes shift by octaves.
+Smart limits overlap to eight notes. Timing, note lengths and note velocities
+stay original; pedals come from the selected part with the most notes.
+Every mode and manual part choice is saved per song and restored on playback.
+With no song selected, changing the mode sets the default for unconfigured songs.
+Open a library and use Rename library to change its folder name.
+Use the pencil beside a saved song to rename it. The MIDI contents,
+queue entries, favorites, memberships, and playback settings stay with it.
+Click the Spotify icon on the album cover to find the artist and album.
+Tap or drag the Player timeline to seek; arrow keys also work.
+Seeking continues playback if playing and stays paused if paused.
+Applying a song setting stops playback and loads it quietly. Press Play to listen.
+Your original downloaded/exported MIDI remains unchanged. Compare modes;
+these are deterministic rules, not automatic musical arranging by AI.
+
+ALBUM ART
+Related album artwork is looked up in Apple iTunes using cleaned song names
+and artist information when available. Covers use 600-pixel images and link
+to the related store listing. Failed or ambiguous matches use the piano artwork.
+Lookup happens in the background and does not block MIDI playback.
+
+PLAYER AND QUEUE
+Add songs to the queue from All songs, Favorites, or a library.
+Queue a whole library with Queue these songs. This does not start music.
+On Player, press Play queue. Tracks play in order, then stop at the end.
+Move songs up or down, remove a song, clear the queue, or skip next/previous.
+Pause releases sounding keys; Resume continues at the paused position.
+Stop releases all keys and resets the current song to its beginning.
+Saved queues are restored after restart but never play automatically.
+Losing the piano connection stops playback. Reconnection requires Play again.
+The volume slider uses MIDI channel volume (CC7). Note strike strength
+stays original. 0% suppresses new key strikes. The acoustic instrument's minimum loudness depends on calibration.
+
+SAVED MIDI FOLDER
+Your actual .mid files are stored in:
+  PianoRemote/data/songs
+Library names, favorites, queue, piano choice, and volume live alongside
+that folder in the local database. Back up the whole data folder to retain
+both your files and organization. Missing exported MIDI files are restored
+from the database when the app starts. No files are uploaded to a cloud library.
+
+PIANO CONNECTION
+Choose the piano through the connection button at the top.
+The app remembers its stable name in browser local storage and on this Mac.
+For Bluetooth, it keeps looking for that exact piano and retries a lost link.
+Allow Bluetooth access if macOS asks. Automatic Bluetooth reconnection uses
+macOS 13 or later. Keep the piano on and in range; USB is also supported.
+If another app has used the piano and it is silent, disconnect that app first.
+Open Your piano and press Reconnect piano to rebuild its Bluetooth MIDI route.
+This stops playback and requires Play again once the connection returns.
+MIDI delivery errors stop the queue rather than continuing the song timer.
+If the piano is not found, open Applications > Utilities > Audio MIDI Setup,
+choose Window > Show MIDI Studio > Bluetooth, and connect Prodigy2 MIDI.
+Do not choose ProRecord or the Bluetooth audio device for this MIDI player.
+
+OFFICE WIFI
+Use Control over Wi-Fi to copy the private remote link for phones and laptops
+on the same office network. Include the # key when sharing it. The key is
+saved locally and survives app restarts. The normal port is 52863; if it is
+occupied, the launcher prints an alternate link.
+Keep this Mac running, plugged in if needed, and leave its lid open.
+The app prevents idle sleep while it runs. Guest-network isolation or Mac
+firewall settings may prevent office devices from reaching it.
+Anyone with the private link on your network can control the piano.
+The remote uses local HTTP and is intended for a trusted office network.
+An IP address change will require copying the new link.
+
+WHAT PIANO-ONLY MEANS
+We inspect MIDI programs, channels, and played notes. The Piano only label identifies
+acoustic-grand/bright-acoustic piano programs, no drums or device commands,
+and notes within the 88-key range. Unlabelled channels follow the General MIDI
+piano default. This verifies instrument metadata, not the quality of an
+arrangement. Mixed MIDI plays its note data on the piano; it is not converted into a piano
+arrangement. Manufacturer SysEx commands in song files are not sent.
+
+REQUIREMENTS AND SOURCE
+This native helper build is for Apple Silicon Macs with Python 3.
+React and the MIDI analysis libraries are bundled locally. The included NumPy
+build targets Python 3.9 on Apple Silicon macOS 14 or later, as on this Mac.
+For another Python version, reinstall requirements.txt into vendor/.
+The frontend's Vite project is in web/; the production build is ui-dist/.
+To edit the frontend, run npm install and npm run build from web/.
+No Vite development server is required for normal piano use.
+MIDI source and its embedded Bluetooth permission description are included.
+Rebuild the helper with Apple's Swift command-line tools, CoreBluetooth,
+and Info.plist embedded as __TEXT/__info_plist.
+
+CHECKS
+Checked saved-song persistence, exports, favorites, library membership,
+MIDI compatibility labeling, BitMidi search, original note dynamics and channel volume,
+mute, deletion and restore, mixed MIDI playback, queue timing and auto-advance, and stopping after a virtual
+CoreMIDI endpoint disconnects. Physical Bluetooth reconnection after a piano
+power cycle and exact acoustic loudness still require an office check.
+
+REFERENCES
+BitMidi: https://bitmidi.com/
+FreeMidi: https://freemidi.org/
+Prodigy II manual:
+https://www.pianodisc.com/archive/wp-content/uploads/download-manager-files/Prodigy%20II%20User%20Guide.pdf
+
+Finished songs automatically leave the queue; the next song continues.
+Pause and Stop keep the current queue entry. Saved songs remain in All songs.
+
+Source layout: backend/ (FastAPI/music services), native/ (Swift MIDI),
+web/ (React/Vite), scripts/ (build/setup), tests/ (isolated checks).
+README.md describes fresh setup. AGENTS.md records working behavior for future sessions.
+Artist and Album can be edited with the pencil beside a song. Clear filename
+artist labels and conservative cover matches can fill missing values.
+Sheet music accepts PDFs, images, and MusicXML. Name each piece and choose
+its page range; books become separate songs. Keep repeat warnings visible.
+Drag the grip to reorder songs or queue entries; library order is saved.
