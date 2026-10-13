@@ -22,7 +22,7 @@ Applies to this entire repository. Prefer the smallest complete fix; preserve wo
 - Seeking uses tempo-aware seconds and preserves playing/paused state. Validate song identity to reject stale requests.
 - Sheet music has a separate tab. Keep source files; named PDF page ranges become separate songs. Lead sheets do not contain full recorded arrangements. Surface recognition/repeat warnings.
 - Artist/album are editable. Infer only from clear metadata/filenames or conservative cover matches; manual edits win over automatic lookup.
-- Mobile navigation floats at the bottom with accessible icon labels; drag handles must support touch and keyboard.
+- Mobile navigation floats at the bottom with accessible icon labels; dnd-kit in `web/SortableList.jsx` handles pointer/keyboard sorting, row animations, and overlays. Keep unique occurrence IDs for duplicate queue entries and reject stale drops.
 
 ## Boundaries and verification
 - BLE advertisements with `connected:false` are not ready MIDI devices. Preserve safe disconnect behavior on both bridges; reconnect never autoplays.

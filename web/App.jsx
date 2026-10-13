@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState, useId } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
+import { SortableList, SortableItem } from './SortableList.jsx';
 
 const storage = {
   get(name) { try { return localStorage.getItem(name) || ''; } catch { return ''; } },
@@ -206,7 +207,6 @@ function App() {
   const [sheetError, setSheetError] = useState('');
   const [sheetPieces, setSheetPieces] = useState([]);
   const [splitError, setSplitError] = useState('');
-  const [dragging, setDragging] = useState(null);
   const dragRef = useRef(null);
   const orderState = useRef(null);
   const runTask = useRef(null);
@@ -367,17 +367,16 @@ function App() {
   const savedSongs = library.songs.filter(song => (view === 'all' && song.source_kind !== 'sheet' || view === 'sheets' && song.source_kind === 'sheet' || view === 'favorites' && song.favorite || (song.library_ids || []).includes(view)) && [song.name, song.artist, song.album].filter(Boolean).join(' ').toLowerCase().includes(filter.trim().toLowerCase())).sort((a, b) => savedOrder.indexOf(a.id) - savedOrder.indexOf(b.id));
   orderState.current = { queueIds, visibleIds: savedSongs.map(song => song.id), fullIds: savedOrder, libraryId: selectedLibrary?.id || '', view };
 
-  function startReorder(event, kind, index) {
-    if (busy || event.button !== 0) return;
-    event.preventDefault();
-    event.currentTarget.focus({ preventScroll: true });
-    const order = orderState.current;
-    const ids = kind === 'queue' ? order.queueIds : order.visibleIds;
-    if (ids.length < 2) return;
-    dragRef.current = { kind, from: index, to: index, ...order, pointerId: event.pointerId };
-    const id = ids[index];
-    setDragging({ kind, from: index, to: index, x: event.clientX, y: event.clientY, name: library.songs.find(song => song.id === id)?.name || 'Song' });
+  const queueEntryIds = queueIds.map((id, index) => `${id}-${queueIds.slice(0, index).filter(queuedId => queuedId === id).length}`);
+  function startReorder(kind, from) {
+    dragRef.current = { ...orderState.current, kind, from };
   }
+  function finishReorder(to) {
+    const drag = dragRef.current;
+    dragRef.current = null;
+    if (drag) return commitReorder({ ...drag, to });
+  }
+  function cancelReorder() { dragRef.current = null; }
 
   async function commitReorder(drag) {
     const now = orderState.current;
@@ -396,45 +395,6 @@ function App() {
     }
   }
 
-  function reorderKey(event, kind, index) {
-    if (!['ArrowUp', 'ArrowDown'].includes(event.key)) return;
-    event.preventDefault();
-    const order = orderState.current;
-    const length = (kind === 'queue' ? order.queueIds : order.visibleIds).length;
-    const to = index + (event.key === 'ArrowUp' ? -1 : 1);
-    if (to >= 0 && to < length) commitReorder({ ...order, kind, from: index, to });
-  }
-
-  useEffect(() => {
-    function move(event) {
-      const drag = dragRef.current;
-      if (!drag || drag.pointerId !== event.pointerId) return;
-      event.preventDefault();
-      const row = document.elementFromPoint(event.clientX, event.clientY)?.closest('[data-sort-kind]');
-      if (row?.dataset.sortKind === drag.kind) {
-        const to = Number(row.dataset.sortIndex);
-        drag.to = to;
-      }
-      setDragging(previous => previous ? { ...previous, to: drag.to, x: event.clientX, y: event.clientY } : null);
-      if (event.clientY < 80) window.scrollBy(0, -14);
-      else if (event.clientY > window.innerHeight - 100) window.scrollBy(0, 14);
-    }
-    function end(event) {
-      if (dragRef.current?.pointerId !== event.pointerId) return;
-      const drag = dragRef.current;
-      dragRef.current = null;
-      setDragging(null);
-      if (event.type !== 'pointercancel') commitReorder(drag);
-    }
-    window.addEventListener('pointermove', move, { passive: false });
-    window.addEventListener('pointerup', end);
-    window.addEventListener('pointercancel', end);
-    return () => {
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', end);
-      window.removeEventListener('pointercancel', end);
-    };
-  }, [post, announce]);
   const assignedSong = library.songs.find(song => song.id === dialog?.songId);
 
   async function upload(event) {
@@ -679,12 +639,13 @@ function App() {
           <Icon name="arrow" />
         </button>
         <div className="content-heading queue-header"><div><h2>Your queue</h2><p className="section-note">{queueIds.length ? `${queueIds.length} ${queueIds.length === 1 ? 'piece' : 'pieces'} · Plays in order. Reorder to set the mood.` : 'Add songs from your music or queue a whole library.'}</p></div><div className="queue-tools"><button className="btn small" disabled={busy || !queueIds.length || !playable || playing} onClick={() => queueAction('play')}><Icon name="play" />Play queue</button><button className="btn light small" disabled={busy || !queueIds.length} onClick={() => queueAction('clear')}>Clear queue</button></div></div>
+        <SortableList items={queueEntryIds} getLabel={entry => songTitle(library.songs.find(song => song.id === queueIds[queueEntryIds.indexOf(entry)])?.name)} onStart={from => startReorder('queue', from)} onEnd={finishReorder} onCancel={cancelReorder}>
         <div className="song-list" role="list" aria-label="Song queue">{!queueIds.length ? <EmptyState title="Your next song starts here." description="Add a few favorites or queue an entire library. Nothing starts until you press play." button="Browse your music" onClick={() => navigate('all')} /> : queueIds.map((id, index) => {
           const song = library.songs.find(item => item.id === id);
           const entryKey = `${id}-${queueIds.slice(0, index).filter(queuedId => queuedId === id).length}`;
           if (!song) return null;
-          return <div key={entryKey} data-sort-kind="queue" data-sort-index={index} className={`queue-row ${index === queueIndex ? 'is-current' : ''} ${dragging?.kind === 'queue' && dragging.to === index ? 'sort-target' : ''} ${dragging?.kind === 'queue' && dragging.from === index ? 'sort-source' : ''}`} role="listitem"><span className="queue-number"><button className="sort-handle" disabled={busy || queueIds.length < 2} aria-label={`Reorder queued song: ${song.name}`} title="Drag to reorder, or use arrow keys" onPointerDown={event => startReorder(event, 'queue', index)} onKeyDown={event => reorderKey(event, 'queue', index)}><Icon name="grip" /></button>{String(index + 1).padStart(2, '0')}</span><div className="song-info"><div className="song-name" title={song.name}>{songTitle(song.name)}</div><div className="queue-status">{index === queueIndex ? playing ? 'Now playing' : 'Selected' : queueIndex >= 0 && index < queueIndex ? 'Earlier in queue' : 'Up next'} · {song.piano_only === true ? 'Piano only' : 'Other MIDI'}</div></div><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="arrow" style={{ transform: 'rotate(-90deg)' }} label={`Move up: ${song.name}`} disabled={busy || index === 0} onClick={() => queueAction('move', { from: index, to: index - 1 })} /><IconButton icon="arrow" style={{ transform: 'rotate(90deg)' }} label={`Move down: ${song.name}`} disabled={busy || index === queueIds.length - 1} onClick={() => queueAction('move', { from: index, to: index + 1 })} /><IconButton icon="play" label={`Play queued song: ${song.name}`} disabled={busy || !playable} onClick={() => queueAction('play', { index })} /><IconButton icon="close" label={`Remove from queue: ${song.name}`} disabled={busy} onClick={() => queueAction('remove', { index })} /></div></div>;
-        })}</div>
+          return <SortableItem key={entryKey} id={entryKey} disabled={busy || queueIds.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} className={`queue-row ${index === queueIndex ? 'is-current' : ''}`} role="listitem"><span className="queue-number"><button className="sort-handle" disabled={busy || queueIds.length < 2} aria-label={`Reorder queued song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button>{String(index + 1).padStart(2, '0')}</span><div className="song-info"><div className="song-name" title={song.name}>{songTitle(song.name)}</div><div className="queue-status">{index === queueIndex ? playing ? 'Now playing' : 'Selected' : queueIndex >= 0 && index < queueIndex ? 'Earlier in queue' : 'Up next'} · {song.piano_only === true ? 'Piano only' : 'Other MIDI'}</div></div><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="arrow" style={{ transform: 'rotate(-90deg)' }} label={`Move up: ${song.name}`} disabled={busy || index === 0} onClick={() => queueAction('move', { from: index, to: index - 1 })} /><IconButton icon="arrow" style={{ transform: 'rotate(90deg)' }} label={`Move down: ${song.name}`} disabled={busy || index === queueIds.length - 1} onClick={() => queueAction('move', { from: index, to: index + 1 })} /><IconButton icon="play" label={`Play queued song: ${song.name}`} disabled={busy || !playable} onClick={() => queueAction('play', { index })} /><IconButton icon="close" label={`Remove from queue: ${song.name}`} disabled={busy} onClick={() => queueAction('remove', { index })} /></div></div>}</SortableItem>;
+        })}</div></SortableList>
       </section>}
 
       {view === 'sheets' && <section className="sheet-import" aria-label="Sheet music files">
@@ -699,17 +660,17 @@ function App() {
 
       {view !== 'player' && view !== 'discover' && <section aria-label="Saved music">
         <div className="content-heading"><div><h2>{viewTitle}</h2><p className="section-note">{viewNote}</p></div><div className="saved-heading-tools">{selectedLibrary && <button className="btn light small" onClick={() => { setLibraryName(selectedLibrary.name); setDialog({ type: 'rename', libraryId: selectedLibrary.id }); }}>Rename library</button>}<label className="search"><Icon name="search" /><input type="search" placeholder="Find a saved song…" aria-label="Filter saved songs" value={filter} onChange={event => setFilter(event.target.value)} /></label><button className="btn light small" disabled={busy || !savedSongs.length} title={`Queue ${savedSongs.length} songs`} onClick={() => queueAction('replace', { song_ids: savedSongs.map(song => song.id) }, 'Queue ready. Press play when you want music.', true)}>{selectedLibrary ? 'Queue library' : 'Queue these songs'}</button></div></div>
+        <SortableList items={savedSongs.map(song => song.id)} getLabel={id => songTitle(library.songs.find(song => song.id === id)?.name)} onStart={from => startReorder('songs', from)} onEnd={finishReorder} onCancel={cancelReorder}>
         <div className="song-list">{!savedSongs.length ? <EmptyState icon={filter ? 'search' : view === 'favorites' ? 'heart' : 'note'} title={filter ? 'No matching pieces' : view === 'favorites' ? 'Keep your favorites close' : 'Make room for a little music.'} description={filter ? 'Try another title.' : view === 'favorites' ? 'Tap the heart beside a saved song to keep it here.' : view === 'sheets' ? 'Upload sheet music above. Converted pieces will appear here.' : 'Upload a MIDI file, or find a new piece in Discover.'} button={filter || view === 'favorites' || view === 'sheets' ? null : 'Discover music'} onClick={() => navigate('discover')} /> : <><div className="list-labels"><span /><span>Piece</span><span className="type-label">Instrument</span><span>Time</span><span style={{ textAlign: 'right' }}>Make it yours</span></div>{savedSongs.map((song, index) => {
           const piano = song.piano_only === true;
-          return <div key={song.id} data-sort-kind="songs" data-sort-index={index} className={`song-row ${status?.song_id === song.id ? 'is-current' : ''} ${dragging?.kind === 'songs' && dragging.to === index ? 'sort-target' : ''} ${dragging?.kind === 'songs' && dragging.from === index ? 'sort-source' : ''}`}><div className="mini-art"><button className="sort-handle" disabled={busy || savedSongs.length < 2} aria-label={`Reorder song: ${song.name}`} title="Drag to reorder, or use arrow keys" onPointerDown={event => startReorder(event, 'songs', index)} onKeyDown={event => reorderKey(event, 'songs', index)}><Icon name="grip" /></button></div><div className="song-info"><button className="song-name song-name-button" title={`Choose playback sound for ${song.name}`} aria-label={`Choose playback sound for ${song.name}`} disabled={busy} onClick={() => openAdaptation(song.id)}>{songTitle(song.name)}</button>{(song.artist || song.album) && <div className="song-record">{[song.artist, song.album].filter(Boolean).join(' · ')}</div>}<div className="song-sub">{piano ? 'Piano only' : 'Other MIDI'} · {song.source_url ? `From ${providerName(song.source_url)}` : song.source_kind === 'sheet' ? 'From sheet music' : 'Uploaded'} · Saved locally</div></div><span className={`piano-badge ${piano ? '' : 'candidate'}`}>{piano ? 'Piano only' : 'Other MIDI'}</span><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="heart" active={song.favorite} disabled={busy} label={`${song.favorite ? 'Remove from' : 'Add to'} favorites: ${song.name}`} onClick={() => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite }))} /><IconButton icon="folder" label={`Choose libraries for ${song.name}`} onClick={() => setDialog({ type: 'assign', songId: song.id })} /><IconButton icon="download" label={`Download MIDI: ${song.name}`} onClick={() => download(song)} /><IconButton icon="edit" label={`Edit song: ${song.name}`} disabled={busy} onClick={() => { setLibraryName(songTitle(song.name)); setSongArtist(song.artist || ''); setSongAlbum(song.album || ''); setDialog({ type: 'rename_song', songId: song.id }); }} /><IconButton icon="trash" label={`Delete song: ${song.name}`} disabled={busy} onClick={() => setDialog({ type: 'delete', songId: song.id })} /><IconButton icon="plus" label={`Add to queue: ${song.name}`} disabled={busy} onClick={() => queueAction('add', { song_id: song.id }, 'Added to the Player queue.')} /><IconButton icon="play" label={`Play ${song.name}`} disabled={busy} onClick={() => queueAction('play', { song_id: song.id }, '', true)} /></div></div>;
-        })}</>}</div>
+          return <SortableItem key={song.id} id={song.id} disabled={busy || savedSongs.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} className={`song-row ${status?.song_id === song.id ? 'is-current' : ''}`}><div className="mini-art"><button className="sort-handle" disabled={busy || savedSongs.length < 2} aria-label={`Reorder song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button></div><div className="song-info"><button className="song-name song-name-button" title={`Choose playback sound for ${song.name}`} aria-label={`Choose playback sound for ${song.name}`} disabled={busy} onClick={() => openAdaptation(song.id)}>{songTitle(song.name)}</button>{(song.artist || song.album) && <div className="song-record">{[song.artist, song.album].filter(Boolean).join(' · ')}</div>}<div className="song-sub">{piano ? 'Piano only' : 'Other MIDI'} · {song.source_url ? `From ${providerName(song.source_url)}` : song.source_kind === 'sheet' ? 'From sheet music' : 'Uploaded'} · Saved locally</div></div><span className={`piano-badge ${piano ? '' : 'candidate'}`}>{piano ? 'Piano only' : 'Other MIDI'}</span><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="heart" active={song.favorite} disabled={busy} label={`${song.favorite ? 'Remove from' : 'Add to'} favorites: ${song.name}`} onClick={() => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite }))} /><IconButton icon="folder" label={`Choose libraries for ${song.name}`} onClick={() => setDialog({ type: 'assign', songId: song.id })} /><IconButton icon="download" label={`Download MIDI: ${song.name}`} onClick={() => download(song)} /><IconButton icon="edit" label={`Edit song: ${song.name}`} disabled={busy} onClick={() => { setLibraryName(songTitle(song.name)); setSongArtist(song.artist || ''); setSongAlbum(song.album || ''); setDialog({ type: 'rename_song', songId: song.id }); }} /><IconButton icon="trash" label={`Delete song: ${song.name}`} disabled={busy} onClick={() => setDialog({ type: 'delete', songId: song.id })} /><IconButton icon="plus" label={`Add to queue: ${song.name}`} disabled={busy} onClick={() => queueAction('add', { song_id: song.id }, 'Added to the Player queue.')} /><IconButton icon="play" label={`Play ${song.name}`} disabled={busy} onClick={() => queueAction('play', { song_id: song.id }, '', true)} /></div></div>}</SortableItem>;
+        })}</>}</div></SortableList>
       </section>}
 
       {view === 'discover' && <section aria-label="Discover music"><div className="discover-toolbar"><label className="source-chooser"><span>Source</span><select value={searchSource} onChange={event => chooseSearchSource(event.target.value)}><option value="both">Both sites</option><option value="bitmidi">BitMidi</option><option value="freemidi">FreeMidi</option></select></label><form className="search" onSubmit={event => { event.preventDefault(); search(); }}><Icon name="search" /><input type="search" placeholder="Search a song, composer, or artist…" aria-label="Search MIDI sites" required maxLength="120" value={query} onChange={event => setQuery(event.target.value)} /><button className="btn" type="submit">{searching ? <><span className="spinner" />Checking</> : 'Search'}</button></form></div><p className="discovery-note">Search shows all matches. <strong>Piano-only</strong> files are marked; other MIDI can also play on the piano.</p><div className="search-warnings" role="status">{searchData.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div><p className="section-note" style={{ margin: '0 0 14px' }} aria-live="polite">{searching ? 'Checking piano parts… This can take a moment.' : searchData.searched ? `${searchData.results.length}${Number.isInteger(searchData.totalMatches) ? ` of ${searchData.totalMatches}` : ''} songs shown · ${searchData.results.filter(result => result.piano_only === true).length} piano-only${searchData.hasMore ? ' · More available below' : ''}` : ''}</p><div className="song-list results">{searchData.results.length ? searchData.results.map((result, index) => <SearchResult key={`${result.url}-${index}`} result={result} libraries={library.libraries} busy={busy} onSave={saveResult} notice={notice} />) : searchData.searched ? <EmptyState title="No songs found in this batch." description="Try the next results, or search another title or composer." /> : <EmptyState icon="search" title="Find a song" description="Try a song title, artist, or composer." />}</div>{searchData.hasMore && <button className="btn light load-more" disabled={searching} onClick={() => search(true)}>Load more songs</button>}</section>}
 
       <footer className="footer"><span>Songs saved on the piano computer. Download a copy anytime.</span><button onClick={() => { setCopied(false); setDialog({ type: 'remote' }); }}><Icon name="wifi" />Control over Wi-Fi</button></footer>
     </main>
-    {dragging && <div className="drag-preview" style={{ left: Math.max(8, Math.min(window.innerWidth - 220, dragging.x + 16)), top: dragging.y + 16 }} aria-hidden="true"><Icon name="grip" /><span>{songTitle(dragging.name)}</span><small>Drop at position {dragging.to + 1}</small></div>}
     <nav className="mobile-dock" aria-label="Main navigation">
       {[['player', 'Player', 'play'], ['all', 'All songs', 'grid'], ['sheets', 'Sheet music', 'book'], ['favorites', 'Favorites', 'heart'], ['discover', 'Discover', 'search']].map(([id, label, icon]) =>
         <button key={id} className={view === id ? 'active' : ''} aria-label={label} title={label} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} /></button>

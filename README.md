@@ -47,7 +47,7 @@ Manual setup supports Python 3.9–3.13 and Node 22.12+. Linux also needs the AL
 - **All songs**: upload multiple MIDI files, search, edit names/artists/albums, favorites, and saved collections.
 - **Sheet music**: upload PDFs/images/MusicXML. Name each piece and select its pages to split a book into songs. Originals remain downloadable. Recognition can miss notes or repeats; review the result. A lead sheet provides written notes, not a complete piano recording.
 - **Discover**: search BitMidi, FreeMidi, or both. Piano-only files are marked; mixed MIDI is also playable.
-- Drag the grip to reorder queue/library songs; arrow keys on a grip also work. Library order is saved separately for each collection.
+- Drag the grip to reorder queue/library songs with dnd-kit. For keyboard sorting, press Space on a grip, move with the arrow keys, then press Space to drop or Escape to cancel. Library order is saved separately for each collection.
 - Original/Piano-only/Smart/manual part choices are saved with each song. Smart is an experimental deterministic reduction. MIDI dynamics, musical interpretation, and physical volume need listening checks on the piano.
 - Album artwork is matched conservatively, with piano art as fallback; Spotify opens a search for the matched or edited artist/album.
 

@@ -1735,19 +1735,14 @@ h2,
 .sort-handle:disabled { opacity: .35; cursor: default; }
 .sort-handle svg { width: 22px; height: 24px; }
 .queue-number { display: flex; align-items: center; gap: 4px; }
-.song-row.sort-target, .queue-row.sort-target { box-shadow: inset 0 -3px #8b9e62; background: #f1f5e9; }
 .queue-number { flex-direction: column; gap: 0; }
 
 .song-row, .queue-row { transition: background-color 160ms, box-shadow 160ms, opacity 160ms, transform 160ms; }
-.sort-source { opacity: .35; transform: scale(.985); }
-.song-row.sort-target, .queue-row.sort-target { box-shadow: inset 0 -4px #6c8549; background:#eaf1df; }
-.drag-preview { position:fixed; z-index:1000; pointer-events:none; width:210px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px; background:#fffdf6; border:1px solid #8b9e62; border-radius:12px; box-shadow:0 14px 35px #16322535; animation:drag-lift 140ms ease-out; }
-.drag-preview svg { width:20px; height:20px; }
+.drag-preview { pointer-events:none; width: min(320px, 85vw); display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:12px; background:#fffdf6; border:1px solid #8b9e62; border-radius:12px; box-shadow:0 14px 35px #16322535; }
 .drag-preview span { flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-weight:600; }
-.drag-preview small { width:100%; padding-left:28px; color:#758365; }
+.drag-preview small { width:100%; color:#758365; }
 .sheet-file-warning { margin:6px 0 0; color:#87662d; font-size:12px; }
-@keyframes drag-lift { from { opacity:0; transform:scale(.92); } to { opacity:1; transform:scale(1); } }
-@media (prefers-reduced-motion:reduce) { .song-row,.queue-row { transition:none; } .drag-preview { animation:none; } }
+@media (prefers-reduced-motion:reduce) { .song-row,.queue-row { transition:none !important; } }
 .song-edit-fields { display: grid; gap: 8px; margin-top: 18px; }
 .song-edit-fields .dialog-label:not(:first-child) { margin-top: 10px; }
 .song-record { font-size: 12px; color: #5c735f; line-height: 1.5; margin-top: 4px; overflow-wrap: anywhere; }
