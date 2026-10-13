@@ -249,14 +249,12 @@ class BluetoothTests(unittest.TestCase):
                 clients[-1].is_connected = False
                 clients[-1].disconnected_callback(clients[-1])
                 self.assertFalse(bluetooth.snapshot()[0][0]['connected'])
-                bluetooth.last_scan = 0
-                print('RETRY DIAGNOSTIC', bluetooth.task.done(), bluetooth.last_scan, bluetooth.preferred, bluetooth.snapshot()[1], file=sys.stderr)
+                bluetooth.last_scan = float('-inf')
                 bluetooth.scan()
                 for _ in range(100):
                     if bluetooth.snapshot()[1]['state'] == 'connected':
                         break
                     time.sleep(.01)
-                print('RETRY RESULT', bluetooth.task.done(), bluetooth.last_scan, bluetooth.generation, bluetooth.snapshot()[1], len(clients), bluetooth.task.result(timeout=1), file=sys.stderr)
                 self.assertEqual(bluetooth.snapshot()[1]['state'], 'connected')
                 self.assertEqual(len(clients), 2)
             finally:

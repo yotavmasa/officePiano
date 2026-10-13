@@ -62,7 +62,7 @@ class BluetoothMidi:
         self.closed = False
         self.task = None
         self.generation = 0
-        self.last_scan = 0.0
+        self.last_scan = float('-inf')
         self.thread = threading.Thread(target=self._run, daemon=True, name='ble-midi')
         self.thread.start()
         self.scan()
