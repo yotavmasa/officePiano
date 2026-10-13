@@ -145,3 +145,10 @@ artist labels and conservative cover matches can fill missing values.
 Sheet music accepts PDFs, images, and MusicXML. Name each piece and choose
 its page range; books become separate songs. Keep repeat warnings visible.
 Drag the grip to reorder songs or queue entries; library order is saved.
+
+Installer: run ./scripts/install.sh --with-sheets from the source folder.
+It downloads local Python/Node, installs packages, builds the UI and the
+platform MIDI bridge, and installs optional sheet recognition tools.
+Raspberry Pi ARM64 support is prepared; hardware setup/testing is deferred.
+Run installer --dry-run --platform linux-arm64 --with-sheets to preview its plan.
+Use .venv/bin/python server.py after installation.

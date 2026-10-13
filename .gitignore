@@ -16,3 +16,8 @@ __pycache__/
 .env
 .env.*
 /.build/
+
+# Downloaded cross-platform runtimes and source build workspaces
+/tools/*
+!/tools/SOURCES.txt
+!/tools/*LICENSE.txt

@@ -115,6 +115,20 @@ class QueueTests(unittest.TestCase):
         self.assertTrue(self.player.running)
         self.assertEqual(self.engine.song,'B')
 
+    def test_unconnected_bluetooth_advertisement_is_not_playable(self):
+        self.engine.devices[0]['connected']=False
+        before=self.player.snapshot()
+        with self.assertRaises(ValueError):self.player.control('play',{'song_id':'B'})
+        self.assertEqual(self.player.snapshot(),before)
+        self.assertFalse(self.engine.playing)
+        self.engine.devices[0]['connected']=True
+        self.player.control('play')
+        self.engine.devices[0]['connected']=False
+        self.player.tick()
+        self.assertFalse(self.player.running)
+        self.assertEqual(self.player.song_ids,['A','B','C'])
+        self.assertIn('disconnected',self.player.error.lower())
+
     def test_pause_resume_and_stop_do_not_advance(self):
         self.player.control('play')
         self.player.control('pause')

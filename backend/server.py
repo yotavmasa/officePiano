@@ -19,7 +19,8 @@ import urllib.parse
 import webbrowser
 
 ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT / 'vendor'))
+if sys.prefix == sys.base_prefix:
+    sys.path.insert(0, str(ROOT / 'vendor'))
 from fastapi import FastAPI, Request
 from fastapi.responses import Response
 from starlette.concurrency import run_in_threadpool
@@ -83,11 +84,11 @@ def device_match(device, name):
 def state():
     result = midi({'action': 'status'})
     preferred = LIBRARY.get_setting('preferred_device', '')
-    result.update(name=NAME, song_id=SONG_ID, adaptation=sound_state(), artwork=ARTWORK if SONG_ID and ARTWORK_SONG_ID == SONG_ID else {}, remote=REMOTE, online_count=online_count(), library=LIBRARY.snapshot(),
+    result.update(name=NAME, song_id=SONG_ID, platform=sys.platform, adaptation=sound_state(), artwork=ARTWORK if SONG_ID and ARTWORK_SONG_ID == SONG_ID else {}, remote=REMOTE, online_count=online_count(), library=LIBRARY.snapshot(),
                   queue=QUEUE.snapshot() if QUEUE else {'song_ids': [], 'index': 0, 'running': False},
                   saved_folder=str(LIBRARY.saved_folder), device_name=preferred,
                   connection={'preferred_name': preferred,
-                              'connected': any(device_match(d, preferred) for d in result.get('devices', []))})
+                              'connected': any(device_match(d, preferred) and d.get('connected', True) for d in result.get('devices', []))})
     return result
 
 
@@ -360,12 +361,21 @@ def start_services(port=52863):
     if not KEY_FILE.exists():
         KEY_FILE.write_text(TOKEN)
         KEY_FILE.chmod(0o600)
-    ENGINE = subprocess.Popen([str(ROOT / 'native/midi')], stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
+    engine_command = ([str(ROOT / 'native/midi')] if sys.platform == 'darwin' else
+                      [sys.executable, str(ROOT / 'native/midi_linux.py')])
+    ENGINE = subprocess.Popen(engine_command, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True, bufsize=1)
     ip = socket.gethostname() + '.local'
-    for interface in ('en0', 'en1'):
-        result = subprocess.run(['ipconfig', 'getifaddr', interface], capture_output=True, text=True)
-        if result.returncode == 0 and result.stdout.strip():
-            ip = result.stdout.strip(); break
+    if sys.platform == 'darwin':
+        for interface in ('en0', 'en1'):
+            result = subprocess.run(['ipconfig', 'getifaddr', interface], capture_output=True, text=True)
+            if result.returncode == 0 and result.stdout.strip():
+                ip = result.stdout.strip(); break
+    else:
+        result = subprocess.run(['hostname', '-I'], capture_output=True, text=True)
+        if result.returncode == 0:
+            addresses = [address for address in result.stdout.split() if ':' not in address and not address.startswith('127.')]
+            if addresses:
+                ip = addresses[0]
     REMOTE = f'http://{ip}:{port}/#' + TOKEN
     local = f'http://127.0.0.1:{port}/#' + TOKEN
     current = midi({'action': 'status'})
@@ -385,7 +395,7 @@ def start_services(port=52863):
             with LOCK:
                 QUEUE.tick()
     threading.Thread(target=advance_queue, daemon=True).start()
-    awake = subprocess.Popen(['caffeinate', '-i', '-w', str(os.getpid())])
+    awake = subprocess.Popen(['caffeinate', '-i', '-w', str(os.getpid())]) if sys.platform == 'darwin' else None
     print('\nPiano Remote is running. Keep this window open.\n')
     print('Office Wi-Fi remote link:\n' + REMOTE + '\n')
     print('Saved MIDI folder:\n' + str(LIBRARY.saved_folder) + '\n')
@@ -408,7 +418,8 @@ def stop_services(resources):
                 ENGINE.wait(timeout=3)
             except Exception:
                 ENGINE.kill()
-    awake.terminate()
+    if awake is not None:
+        awake.terminate()
 
 
 def create_app(startup=True, port=52863):

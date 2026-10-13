@@ -1,11 +1,27 @@
-Audiveris 5.11.0 (unmodified official macOS arm64 application with bundled Java runtime)
-Download: https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-macosx-arm64.dmg
-Corresponding source: https://github.com/Audiveris/audiveris/tree/5.11.0
-License: GNU Affero General Public License version 3; license files retained in application bundle.
+Audiveris 5.11.0 (AGPL-3.0; licenses retained with local runtime)
+Official release: https://github.com/Audiveris/audiveris/releases/tag/5.11.0
+Source: https://github.com/Audiveris/audiveris/tree/9e1e55cd2746037d059345881c53e6a6754bffbd
+macOS ARM64 application (bundled Java):
+https://github.com/Audiveris/audiveris/releases/download/5.11.0/Audiveris-5.11.0-macosx-arm64.dmg
+SHA256: 17491af8b6d40153b031dd1f0815e37213f0999ef23f10586af46706e59b2eb6
+Linux ARM64: official release has no binary package. Build the pinned source with its Gradle wrapper:
+./gradlew --no-daemon --max-workers=2 -Dorg.gradle.jvmargs=-Xmx1536m -PtargetOS=linux-arm64 :app:installDist
+Audiveris 5.11.0 requires Java 25; its Gradle files select ARM64 Tesseract/Leptonica dependencies.
+Installer retains source in .build/audiveris-5.11.0 and the runnable distribution in tools/audiveris.
 
-English Tesseract OCR model (includes legacy mode required by Audiveris)
-Download: https://raw.githubusercontent.com/tesseract-ocr/tessdata/main/eng.traineddata
+Eclipse Temurin 25.0.4.1+1 Linux ARM64 JDK (GPL-2.0 with Classpath Exception; licenses retained)
+https://github.com/adoptium/temurin25-binaries/releases/download/jdk-25.0.4.1%2B1/OpenJDK25U-jdk_aarch64_linux_hotspot_25.0.4.1_1.tar.gz
+SHA256: 69df11a02cfa3ef7d7ca645e03edce6778ec090e100f6ae2b42097865730ac52
+
+English Tesseract OCR model (Apache-2.0; includes legacy mode required by Audiveris)
+https://raw.githubusercontent.com/tesseract-ocr/tessdata/c2b2e0df86272ce11be323f23f96cf656565ed41/eng.traineddata
+SHA256: daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047
 Source/model repository: https://github.com/tesseract-ocr/tessdata
-License: Apache License 2.0.
 
-These tools run locally. Recognition can misread notes/rhythms, especially low-resolution photos and complex scores. Each named PDF piece is converted independently using its selected pages; multiple exported movements are rejected with an actionable message. Original source files are retained.
+Installer runtimes (stored locally, not committed):
+uv 0.13.0: https://github.com/astral-sh/uv/releases/tag/0.13.0 (MIT/Apache-2.0)
+Node.js 22.23.3: https://nodejs.org/dist/v22.23.3/ (MIT and bundled dependency licenses)
+Managed CPython 3.11: downloaded/verified by uv from python-build-standalone (PSF and bundled licenses).
+Exact uv, Node and Java download SHA256 values are pinned in scripts/install.sh and scripts/install_sheet_tools.py.
+
+Tools run locally. Recognition can misread notes/rhythms, especially low-resolution photos and complex scores. Each named PDF piece is converted independently using its selected pages; multiple exported movements are rejected. Original source files are retained.

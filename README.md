@@ -1,25 +1,45 @@
 # Office Piano
 
-A local piano library and office Wi-Fi remote for a Mac connected to a PianoDisc Prodigy II. React/Vite provides the interface; FastAPI controls a native macOS MIDI bridge. Music and sheet originals stay on the Mac.
+A local piano library and Wi-Fi remote for PianoDisc Prodigy II. React/Vite provides the interface; FastAPI controls a Mac native MIDI bridge or a Linux ALSA/Bluetooth bridge. Music and sheet originals stay on the piano computer.
 
-## Setup on an Apple Silicon Mac
+## Install
 
-Use Python 3.9 or newer, Node 22.12+ and Apple's command-line developer tools (`xcode-select --install`).
+From the checkout, run:
+
+```sh
+./scripts/install.sh --with-sheets
+.venv/bin/python server.py
+```
+
+Omit `--with-sheets` if you only need MIDI files and discovery. The installer supports Apple Silicon macOS and 64-bit Debian/Raspberry Pi OS on ARM64. It downloads checksum-verified local uv/Node runtimes, installs managed Python 3.11 in `tools/`, creates `.venv`, installs Python packages, and builds the frontend. Mac builds the Swift bridge; Linux installs ALSA/BlueZ prerequisites with `sudo` and uses the Python MIDI bridge. On Mac, Apple's command-line developer tools must already be installed (`xcode-select --install`).
+
+Optional sheet recognition installs official Audiveris and English OCR. Mac uses its bundled Java runtime; Linux ARM64 builds pinned Audiveris sources with a local Java 25 runtime. The first Linux build needs network access, disk space, time, and several GB of RAM. A Pi 4/5 with at least 4 GB RAM is the intended test target. The Linux recipe and protocol tests are checked; actual Raspberry Pi installation and piano hardware remain unverified.
+
+Preview the Linux install plan without changing your machine:
+
+```sh
+./scripts/install.sh --dry-run --platform linux-arm64 --with-sheets
+```
+
+The app opens locally and prints a private Wi-Fi link. Use the complete link, including its `#` key, on other devices. Keep the piano computer awake. On Mac, connect Prodigy2 MIDI in Audio MIDI Setup → MIDI Studio → Bluetooth, or use USB. On Linux, choose an ALSA/USB output or the discovered Bluetooth piano, then connect it through the app; a Bluetooth advertisement is not treated as ready until its MIDI connection succeeds. Keep the piano disconnected from competing apps. A headless Pi user needs normal BlueZ/ALSA access; check OS Bluetooth permissions if connection fails.
+
+`Start Piano Remote.command` remains the Mac launcher and prefers `.venv`. Local `vendor/` dependencies support the existing desktop bundle; a virtual environment takes precedence so copied Mac binaries never override Linux packages. Never copy `.venv`, `vendor/`, or installed runtimes across operating systems: rerun the installer on the destination.
+
+### Manual setup
 
 ```sh
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 npm ci --prefix web
 npm run build --prefix web
+# Mac only
 scripts/build_native.sh
-# Optional PDF/photo sheet recognition (downloads official Audiveris + English OCR)
+# Optional OMR (see installer for Linux system prerequisites)
 .venv/bin/python scripts/install_sheet_tools.py
 .venv/bin/python server.py
 ```
 
-The app opens locally and prints a private Wi-Fi link. Use that complete link, including its `#` key, on other devices. Keep the Mac awake and connected to the piano. Connect Prodigy2 MIDI in Audio MIDI Setup → MIDI Studio → Bluetooth, or use USB. `Start Piano Remote.command` starts the local copy; it prefers `.venv` when available.
-
-The existing desktop bundle can also use installed dependencies in `vendor/`. That directory is local and ignored by Git; a fresh checkout uses the environment installed above. Other platforms cannot drive this macOS native bridge. The optional sheet installer is specifically for Apple Silicon macOS.
+Manual setup supports Python 3.9–3.13 and Node 22.12+. Linux also needs the ALSA/BlueZ/compiler prerequisites installed by `install.sh`.
 
 ## Use
 
@@ -35,7 +55,7 @@ The existing desktop bundle can also use installed dependencies in `vendor/`. Th
 
 ```text
 backend/    FastAPI, library, queue, discovery, adaptation, artwork, sheet conversion
-native/     Swift MIDI bridge
+native/     Swift Mac bridge and Python ALSA/BLE Linux bridge
 web/        React/Vite UI and assets
 scripts/    Native build and optional OMR tool installer
 tests/      Isolated API and music/state checks
@@ -50,8 +70,9 @@ server.py   Local launcher
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m unittest discover -s tests
 npm run build --prefix web
+# Mac only: native compile and optional integration check
 scripts/build_native.sh
-# Optional macOS integration check: creates only a virtual MIDI destination
+# Creates only a virtual MIDI destination: creates only a virtual MIDI destination
 .venv/bin/python scripts/check_native.py
 ```
 

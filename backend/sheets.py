@@ -2,6 +2,8 @@
 import io
 import json
 import os
+import platform
+import shutil
 import re
 import subprocess
 import threading
@@ -13,6 +15,36 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 MAX_BYTES = 20 * 1024 * 1024
+
+
+
+def audiveris_runtime(root=ROOT, system=None):
+    tools = Path(root) / 'tools'
+    if (system or platform.system()) == 'Darwin':
+        contents = tools / 'Audiveris.app/Contents'
+        java = contents / 'runtime/Contents/Home/bin/java'
+        jars = contents / 'app'
+    else:
+        jars = tools / 'audiveris/lib'
+        java = tools / 'java25/bin/java'
+        if not java.is_file():
+            java_home = os.environ.get('JAVA_HOME')
+            external = Path(java_home) / 'bin/java' if java_home else Path(shutil.which('java') or '/not-installed/java')
+            java = external
+    if java.is_file() and jars.is_dir() and any(jars.glob('*.jar')):
+        return java, jars
+    return None
+
+
+def audiveris_command(source, destination, pages, runtime_home, root=ROOT, system=None):
+    runtime = audiveris_runtime(root, system)
+    if runtime is None:
+        raise ValueError('Audiveris is not installed. Run scripts/install.sh --with-sheets on the piano computer.')
+    java, jars = runtime
+    command = [str(java), '-Xmx2G', '-Djava.awt.headless=true', '-Duser.home=' + str(runtime_home), '--enable-native-access=ALL-UNNAMED', '--add-exports=java.desktop/sun.awt.image=ALL-UNNAMED', '-cp', str(jars / '*'), 'Audiveris', '-batch', '-transcribe', '-export', '-output', str(destination)]
+    if pages:
+        command += ['-sheets'] + [str(number) for number in pages]
+    return command + ['--', str(source)]
 
 
 def xml_score(data):
@@ -89,7 +121,6 @@ class SheetStore:
         self.items = json.loads(self.state.read_text()) if self.state.exists() else []
         self.process = None
         self.worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sheet-conversion')
-        self.app = ROOT / 'tools/Audiveris.app/Contents'
         for item in self.items:
             if item['status'] in ('queued', 'converting'):
                 item.update(status='error', error='Conversion was interrupted. Upload or select the pages again.')
@@ -102,7 +133,7 @@ class SheetStore:
 
     def snapshot(self):
         with self.lock:
-            return {'items': [dict(x) for x in reversed(self.items)], 'available': (self.app / 'runtime/Contents/Home/bin/java').is_file()}
+            return {'items': [dict(x) for x in reversed(self.items)], 'available': audiveris_runtime() is not None}
 
     def _item(self, identity):
         item = next((x for x in self.items if x['id'] == identity), None)
@@ -213,13 +244,7 @@ class SheetStore:
             if item['extension'] in ('.xml', '.musicxml', '.mxl'):
                 xml = score_bytes(source)
             else:
-                java = self.app / 'runtime/Contents/Home/bin/java'
-                if not java.is_file():
-                    raise ValueError('Audiveris is not installed in the app tools folder.')
-                command = [str(java), '-Xmx2G', '-Djava.awt.headless=true', '-Duser.home=' + str(self.folder / 'runtime'), '--enable-native-access=ALL-UNNAMED', '--add-exports=java.desktop/sun.awt.image=ALL-UNNAMED', '-cp', str(self.app / 'app/*'), 'Audiveris', '-batch', '-transcribe', '-export', '-output', str(destination)]
-                if item.get('pages'):
-                    command += ['-sheets'] + [str(x) for x in item['pages']]
-                command += ['--', str(source)]
+                command = audiveris_command(source, destination, item.get('pages'), self.folder / 'runtime')
                 with (destination / 'conversion.log').open('wb') as log:
                     environment = dict(os.environ, TESSDATA_PREFIX=str(ROOT / 'tools/tessdata'))
                     with self.lock:

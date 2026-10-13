@@ -8,7 +8,7 @@ import sys
 from .library import parse_midi
 
 VENDOR = Path(__file__).resolve().parent.parent / 'vendor'
-if str(VENDOR) not in sys.path:
+if sys.prefix == sys.base_prefix and str(VENDOR) not in sys.path:
     sys.path.insert(0, str(VENDOR))
 
 LABELS = {'original': 'Original MIDI', 'piano': 'Piano tracks',

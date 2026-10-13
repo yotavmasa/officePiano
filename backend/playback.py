@@ -42,7 +42,7 @@ class Playback:
         return str(name).lower().replace(' bluetooth', '').replace(' midi', '').strip()
 
     def _device(self, status, requested=None):
-        devices = status.get('devices', [])
+        devices = [device for device in status.get('devices', []) if device.get('connected', True)]
         if requested is not None:
             if type(requested) is not int:
                 raise ValueError('Choose a connected piano.')
@@ -184,7 +184,7 @@ class Playback:
                 self.error = status['playback_error']
                 self._send({'action': 'stop'})
                 return
-            if not any(device.get('id') == self.device_id for device in status.get('devices', [])):
+            if not any(device.get('id') == self.device_id and device.get('connected', True) for device in status.get('devices', [])):
                 self.running = False
                 self.error = 'Piano disconnected. Reconnect, then press Play to continue.'
                 self._send({'action': 'stop'})

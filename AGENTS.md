@@ -4,9 +4,10 @@ Applies to this entire repository. Prefer the smallest complete fix; preserve wo
 
 ## Map and commands
 - `web/`: React/Vite UI. `backend/`: FastAPI API, SQLite library, queue, discovery, MIDI adaptation, sheet jobs, artwork.
-- `native/midi.swift`: macOS CoreMIDI/AudioToolbox/Bluetooth bridge; `native/midi` is a generated executable.
+- `native/midi.swift`: macOS CoreMIDI/AudioToolbox/Bluetooth bridge; `native/midi_linux.py` is the Linux ALSA/direct BLE bridge; `native/midi` is a generated executable.
 - `server.py`: launcher. `scripts/`: reproducible build/tool setup. `tests/`: isolated Python tests.
 - `data/`: private local state, original MIDI/PDF/images, jobs, SQLite, and LAN access key. Never commit or print its key.
+- `scripts/install.sh --with-sheets` installs local managed Python/Node and optional OMR; Linux ARM64 builds pinned Audiveris source with Java 25. Its dry-run does not change the machine.
 - Setup/run/build commands are in README.md. Run `python3 -m unittest discover -s tests` from repository root; use the configured environment for dependencies.
 - After UI edits, run `npm run build --prefix web` and inspect desktop/mobile behavior. After native edits, run `scripts/build_native.sh` and use a virtual MIDI destination for tests.
 
@@ -24,6 +25,9 @@ Applies to this entire repository. Prefer the smallest complete fix; preserve wo
 - Mobile navigation floats at the bottom with accessible icon labels; drag handles must support touch and keyboard.
 
 ## Boundaries and verification
+- BLE advertisements with `connected:false` are not ready MIDI devices. Preserve safe disconnect behavior on both bridges; reconnect never autoplays.
+- Keep virtual environments ahead of optional vendor packages; never load copied Mac compiled dependencies on Linux.
+- Raspberry Pi hardware is deferred; protocol/unit tests do not establish physical BLE performance.
 - LAN APIs require the bearer key. Only actual loopback peers with loopback Host receive bootstrap; do not trust forwarded headers.
 - Bound uploads (MIDI 8 MB, sheets 20 MB), validate MIDI/XML/page ranges, and keep downloads scoped to known records.
 - Discovery/artwork/network/OMR must not block the MIDI lock or FastAPI event loop. Recognition runs sequentially in a background worker.
