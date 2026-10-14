@@ -1,5 +1,6 @@
 """Local sheet recognition jobs; originals and book page selections stay on this Mac."""
 import io
+import hashlib
 import json
 import os
 import platform
@@ -130,7 +131,31 @@ class SheetStore:
                 item.update(status='error', error='Conversion was interrupted. Upload or select the pages again.')
             if item.get('analysis_status') in ('queued', 'analyzing'):
                 item.update(analysis_status='error', analysis_error='Book analysis was interrupted. Analyze it again.')
+        self._merge_duplicate_books()
         self._save()
+
+    def _merge_duplicate_books(self):
+        originals = {}
+        for item in self.items:
+            if item.get('book_id') or item.get('deleted_by') or item['extension'] != '.pdf':
+                continue
+            source = self.folder / item['id'] / 'source.pdf'
+            if not source.is_file():
+                continue
+            digest = hashlib.sha256(source.read_bytes()).hexdigest()
+            item['source_hash'] = digest
+            previous = originals.get(digest)
+            if previous is None:
+                originals[digest] = item
+                continue
+            for child in self.items:
+                if child.get('book_id') == item['id']:
+                    child['book_id'] = previous['id']
+            if previous.get('analysis_status') != 'ready' and item.get('analysis_status') == 'ready':
+                for key in ('analysis_status', 'analysis_progress', 'analysis_error', 'analysis_warnings', 'candidates', 'music_pages', 'skipped_pages'):
+                    if key in item:
+                        previous[key] = item[key]
+            item['deleted_by'] = item['id']
 
     def _save(self):
         temporary = self.state.with_suffix('.tmp')
@@ -139,13 +164,42 @@ class SheetStore:
 
     def snapshot(self):
         with self.lock:
-            return {'items': [dict(x) for x in reversed(self.items)], 'available': audiveris_runtime() is not None}
+            return {'items': [dict(x, can_delete=not self._busy_group(x['id'])) for x in reversed(self.items) if not x.get('deleted_by')], 'available': audiveris_runtime() is not None}
 
-    def _item(self, identity):
+    def _item(self, identity, include_deleted=False):
         item = next((x for x in self.items if x['id'] == identity), None)
-        if item is None:
+        if item is None or item.get('deleted_by') and not include_deleted:
             raise ValueError('This sheet is no longer available.')
         return item
+
+    def _group(self, identity):
+        return [item for item in self.items if item['id'] == identity or item.get('book_id') == identity]
+
+    def _busy_group(self, identity):
+        return any(item['status'] in ('queued', 'converting') or item.get('analysis_status') in ('queued', 'analyzing')
+                   for item in self._group(identity) if not item.get('deleted_by'))
+
+    def delete(self, identity):
+        with self.lock:
+            self._item(identity)
+            if self._busy_group(identity):
+                raise ValueError('Wait for this file to finish processing before deleting it.')
+            for item in self._group(identity):
+                if not item.get('deleted_by'):
+                    item['deleted_by'] = identity
+            self._save()
+
+    def restore(self, identity):
+        with self.lock:
+            item = self._item(identity, include_deleted=True)
+            if item.get('deleted_by') != identity:
+                raise ValueError('This file cannot be restored separately.')
+            if item.get('book_id'):
+                self._item(item['book_id'])
+            for member in self.items:
+                if member.get('deleted_by') == identity:
+                    del member['deleted_by']
+            self._save()
 
     def source(self, identity):
         with self.lock:
@@ -285,20 +339,32 @@ class SheetStore:
             count, status = 1, 'queued'
         else:
             raise ValueError('Upload a PDF, PNG, JPG or MusicXML score.')
-        identity = uuid.uuid4().hex
-        folder = self.folder / identity
-        folder.mkdir()
-        path = folder / ('source' + ext)
-        path.write_bytes(data)
-        if ext in ('.xml', '.musicxml', '.mxl'):
-            try:
-                score_bytes(path)
-            except Exception:
-                path.unlink()
-                folder.rmdir()
-                raise
-        item = {'id': identity, 'name': Path(name).stem or 'Sheet music', 'filename': name, 'extension': ext, 'page_count': count, 'status': status, 'created': time.time(), 'song_id': None, 'error': ''}
+        digest = hashlib.sha256(data).hexdigest()
         with self.lock:
+            for existing in self.items:
+                if existing.get('book_id') or existing.get('deleted_by') or existing['extension'] != ext:
+                    continue
+                if not existing.get('source_hash'):
+                    original = self.folder / existing['id'] / ('source' + ext)
+                    if original.is_file():
+                        existing['source_hash'] = hashlib.sha256(original.read_bytes()).hexdigest()
+                if existing.get('source_hash') == digest:
+                    if pieces:
+                        self.convert_book(existing['id'], pieces)
+                    return dict(existing, reused=True)
+            identity = uuid.uuid4().hex
+            folder = self.folder / identity
+            folder.mkdir()
+            path = folder / ('source' + ext)
+            path.write_bytes(data)
+            if ext in ('.xml', '.musicxml', '.mxl'):
+                try:
+                    score_bytes(path)
+                except Exception:
+                    path.unlink()
+                    folder.rmdir()
+                    raise
+            item = {'id': identity, 'name': Path(name).stem or 'Sheet music', 'filename': name, 'extension': ext, 'page_count': count, 'status': status, 'created': time.time(), 'song_id': None, 'error': '', 'source_hash': digest}
             self.items.append(item)
             self._save()
         if status == 'queued':

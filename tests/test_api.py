@@ -266,6 +266,18 @@ class ApiTests(unittest.TestCase):
                 release.set()
             self.assertEqual(future.result(timeout=2).status_code, 200)
 
+    def test_sheet_delete_restore_are_authenticated_and_preserve_player(self):
+        for action in ('delete', 'restore'):
+            self.assertEqual(self.client.post('/api/sheets/' + action, json={'id': 'book'}).status_code, 401)
+            with patch.object(server.SHEETS, action) as change:
+                response = self.client.post('/api/sheets/' + action, headers=self.auth, json={'id': 'book'})
+                self.assertEqual(response.status_code, 200, response.text)
+                change.assert_called_once_with('book')
+                self.assertIn('items', response.json())
+        self.assertEqual(self.client.post('/api/sheets/delete', headers=self.auth, json={'id': 'missing'}).status_code, 400)
+        self.assertEqual(self.commands, [])
+        self.assertEqual(server.QUEUE.snapshot()['song_ids'], [])
+
 
 if __name__ == '__main__':
     unittest.main()

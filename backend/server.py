@@ -289,6 +289,12 @@ class RequestHandler:
                     raise ValueError('Invalid request')
                 if self.path == '/api/sheets/analyse':
                     result = dict(ok=True, book=SHEETS.analyse_book(request.get('id')))
+                elif self.path in ('/api/sheets/delete', '/api/sheets/restore'):
+                    if self.path == '/api/sheets/delete':
+                        SHEETS.delete(request.get('id'))
+                    else:
+                        SHEETS.restore(request.get('id'))
+                    result = dict(ok=True, **SHEETS.snapshot())
                 elif self.path == '/api/sheets/retry':
                     SHEETS.retry(request.get('id'))
                     result = dict(ok=True, **SHEETS.snapshot())
