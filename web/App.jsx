@@ -331,6 +331,7 @@ function App() {
   const [wideQueue, setWideQueue] = useState(() => window.matchMedia(WIDE_QUEUE).matches);
   const [draggingSong, setDraggingSong] = useState('');
   const [queueDrop, setQueueDrop] = useState(null);
+  const [libraryDrop, setLibraryDrop] = useState('');
   const songDragBlocked = useRef(false);
   const queueClose = useRef(null);
   const queueTrigger = useRef(null);
@@ -866,9 +867,18 @@ function App() {
         </article>;
   }
 
+  function addToLibrary(songId, libraryId) {
+    const song = library.songs.find(item => item.id === songId);
+    const destination = library.libraries.find(item => item.id === libraryId);
+    if (!song || !destination) return;
+    if ((song.library_ids || []).includes(libraryId)) return announce(`Already in ${destination.name}.`, true);
+    run(() => post('/api/library', { action: 'assign', song_id: songId, library_id: libraryId, value: true }), `Added to ${destination.name}.`);
+  }
   function queueTargetAt(point) {
-    if (!showQueuePanel) return null;
     const stack = document.elementsFromPoint(point.x, point.y);
+    const libraryButton = stack.find(element => element.closest?.('[data-library-id]'))?.closest('[data-library-id]');
+    if (libraryButton) return { library: libraryButton.dataset.libraryId };
+    if (!showQueuePanel) return null;
     if (stack.some(element => element.closest?.('.mini-player-queue'))) return { button: true };
     const inside = stack.find(element => element.closest?.('#queue-panel'));
     return inside ? queueDropTarget({ target: inside, clientY: point.y }) : null;
@@ -878,20 +888,23 @@ function App() {
     onOutsideMove: point => {
       const target = queueTargetAt(point);
       if (target?.button && !queueVisible) setQueueVisible(true);
-      const next = target && !target.button ? target : null;
+      if ((target?.library || '') !== libraryDrop) setLibraryDrop(target?.library || '');
+      const next = target && !target.button && !target.library ? target : null;
       if (next?.index !== queueDrop?.index || next?.row !== queueDrop?.row) setQueueDrop(next);
     },
     onDropOutside: (point, songId) => {
       const target = queueTargetAt(point);
       setQueueDrop(null);
+      setLibraryDrop('');
+      if (target?.library) return addToLibrary(songId, target.library);
       if (target) queueAction('add', target.button ? { song_id: songId } : { song_id: songId, index: target.index, expected_song_ids: queueIds }, 'Added to the queue.');
     },
-    outsideHint: 'Drop to add to the queue',
+    outsideHint: 'Drop to add it here',
   };
 
   function renderSavedSongs(songs, groupId) {
-    const endSongDrag = () => { setDraggingSong(''); setQueueDrop(null); };
-    return <SortableList items={songs.map(song => song.id)} getLabel={id => songTitle(library.songs.find(song => song.id === id)?.name)} onStart={from => { startReorder('songs', from, groupId); if (showQueuePanel) setDraggingSong(songs[from]?.id || ''); }} onEnd={to => { endSongDrag(); return finishReorder(to); }} onCancel={() => { endSongDrag(); cancelReorder(); }} {...songQueueDrag}>
+    const endSongDrag = () => { setDraggingSong(''); setQueueDrop(null); setLibraryDrop(''); };
+    return <SortableList items={songs.map(song => song.id)} getLabel={id => songTitle(library.songs.find(song => song.id === id)?.name)} onStart={from => { startReorder('songs', from, groupId); setDraggingSong(songs[from]?.id || ''); }} onEnd={to => { endSongDrag(); return finishReorder(to); }} onCancel={() => { endSongDrag(); cancelReorder(); }} {...songQueueDrag}>
         <div className="song-list">{!songs.length ? <EmptyState icon={filter ? 'search' : view === 'favorites' ? 'heart' : 'note'} title={filter ? 'No matching pieces' : view === 'favorites' ? 'Keep your favorites close' : 'Make room for a little music.'} description={filter ? 'Try another title.' : view === 'favorites' ? 'Tap the heart beside a saved song to keep it here.' : view === 'sheets' ? 'Upload sheet music above. Converted pieces will appear here.' : 'Upload a MIDI file, or find a new piece in Discover.'} button={filter || view === 'favorites' || view === 'sheets' ? null : 'Discover music'} onClick={() => navigate('discover')} /> : <><div className="list-labels"><span /><span>Piece</span><span className="type-label">Instrument</span><span>Time</span><span style={{ textAlign: 'right' }}>Make it yours</span></div>{songs.map((song, index) => {
           const piano = song.piano_only === true;
           return <SortableItem key={song.id} id={song.id} disabled={busy || songs.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} {...songDragProps(song)} className={`song-row ${playerSongId === song.id ? 'is-current' : ''} ${draggingSong === song.id ? 'is-queue-dragging' : ''}`}><div className="mini-art"><button className="sort-handle" disabled={busy || songs.length < 2} aria-label={`Reorder song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button><span className="song-row-icon" aria-hidden="true"><Icon name="note" /></span></div><div className="song-info"><button className="song-name song-name-button" title={`Choose playback sound for ${song.name}`} aria-label={`Choose playback sound for ${song.name}`} disabled={busy} onClick={() => openAdaptation(song.id)}>{songTitle(song.name)}</button>{(song.artist || song.album) && <div className="song-record">{[song.artist, song.album].filter(Boolean).join(' · ')}</div>}<div className="song-sub">{piano ? 'Piano only' : 'Other MIDI'} · {song.source_url ? `From ${providerName(song.source_url)}` : song.source_kind === 'sheet' ? 'From sheet music' : 'Uploaded'} · Saved locally</div>{groupId && (sheets.song_sources || []).filter(source => source.song_id === song.id && source.source_id === groupId).slice(0, 1).map(source => <div key={source.song_id}>{source.pages?.length > 0 && <p className="sheet-song-pages">PDF {source.pages.length === 1 ? 'page' : 'pages'} {source.pages.join(', ')}</p>}{source.warning && <p className="sheet-file-warning">{source.warning}</p>}</div>)}</div><span className={`piano-badge ${piano ? '' : 'candidate'}`}>{piano ? 'Piano only' : 'Other MIDI'}</span><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="heart" active={song.favorite} disabled={busy} label={`${song.favorite ? 'Remove from' : 'Add to'} favorites: ${song.name}`} onClick={() => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite }))} /><IconButton icon="folder" label={`Choose libraries for ${song.name}`} onClick={() => setDialog({ type: 'assign', songId: song.id })} /><IconButton icon="download" label={`Download MIDI: ${song.name}`} onClick={() => download(song)} />{song.source_kind === 'sheet' && <IconButton icon="book" label={`Download editable score: ${song.name}`} onClick={() => downloadRecognizedScore(song)} />}<IconButton icon="edit" label={`Edit song: ${song.name}`} disabled={busy} onClick={() => { setLibraryName(songTitle(song.name)); setSongArtist(song.artist || ''); setSongAlbum(song.album || ''); setDialog({ type: 'rename_song', songId: song.id }); }} /><IconButton icon="trash" label={`Delete song: ${song.name}`} disabled={busy} onClick={() => setDialog({ type: 'delete', songId: song.id })} /><IconButton icon="plus" label={`Add to queue: ${song.name}`} disabled={busy} onClick={() => queueAction('add', { song_id: song.id }, 'Added to the Player queue.')} /><IconButton icon="play" label={`Play ${song.name}`} disabled={onDevice ? local.loading : busy} onClick={() => playSong(song)} /></div></div>}</SortableItem>;
@@ -939,7 +952,7 @@ function App() {
     storage.set('piano-queue-panel', visible ? 'shown' : 'hidden');
   }
   const songDragProps = song => ({
-    draggable: showQueuePanel && !busy,
+    draggable: !busy,
     onPointerDownCapture: event => { songDragBlocked.current = !!event.target.closest('.sort-handle, input, textarea'); },
     onDragStart: event => {
       if (songDragBlocked.current) return event.preventDefault();
@@ -948,9 +961,26 @@ function App() {
       event.dataTransfer.effectAllowed = 'copy';
       setDraggingSong(song.id);
     },
-    onDragEnd: () => { setDraggingSong(''); setQueueDrop(null); },
+    onDragEnd: () => { setDraggingSong(''); setQueueDrop(null); setLibraryDrop(''); },
   });
   const carriesSong = event => event.dataTransfer?.types?.includes(SONG_DRAG_TYPE);
+  const libraryDropProps = libraryId => ({
+    'data-library-id': libraryId,
+    onDragOver: event => {
+      if (!carriesSong(event)) return;
+      event.preventDefault();
+      event.dataTransfer.dropEffect = 'copy';
+      if (libraryDrop !== libraryId) setLibraryDrop(libraryId);
+    },
+    onDragLeave: event => { if (!event.currentTarget.contains(event.relatedTarget)) setLibraryDrop(''); },
+    onDrop: event => {
+      if (!carriesSong(event)) return;
+      event.preventDefault();
+      setLibraryDrop('');
+      setDraggingSong('');
+      addToLibrary(event.dataTransfer.getData(SONG_DRAG_TYPE), libraryId);
+    },
+  });
   function queueDropTarget(event) {
     const row = event.target.closest?.('[data-queue-index]');
     if (!row) return { index: queueIds.length, row: -1, after: false };
@@ -990,7 +1020,7 @@ function App() {
         {[['player', 'Player', 'play', queueIds.length], ['all', 'All songs', 'grid', library.songs.filter(song => song.source_kind !== 'sheet').length], ['sheets', 'Sheet music', 'book', library.songs.filter(song => song.source_kind === 'sheet').length], ['favorites', 'Favorites', 'heart', library.songs.filter(song => song.favorite).length], ['discover', 'Discover', 'search']].map(([id, label, icon, count]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{label}{id === 'sheets' && <span className="nav-wip">WIP</span>}{count !== undefined && <span className="count">{count}</span>}</button>)}
       </nav>
       <div className="collections"><div className="side-heading"><span className="eyebrow">Your libraries</span><button className="icon-button" aria-label="Create library" title="Create library" onClick={() => { setLibraryName(''); setDialog({ type: 'create' }); }}><Icon name="plus" /></button></div>
-        <nav className="nav library-nav" aria-label="Libraries">{library.libraries.map(item => <button key={item.id} className={view === item.id ? 'active' : ''} aria-current={view === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><Icon name="folder" /><span className="name">{item.name}</span><span className="count">{library.songs.filter(song => (song.library_ids || []).includes(item.id)).length}</span></button>)}</nav>
+        <nav className="nav library-nav" aria-label="Libraries">{library.libraries.map(item => <button key={item.id} {...libraryDropProps(item.id)} className={`${view === item.id ? 'active' : ''} ${draggingSong ? 'is-drop-ready' : ''} ${libraryDrop === item.id ? 'is-drop-target' : ''}`} aria-current={view === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><Icon name="folder" /><span className="name">{item.name}</span><span className="count">{library.songs.filter(song => (song.library_ids || []).includes(item.id)).length}</span></button>)}</nav>
       </div>
       <div className="side-note"><Icon name="piano" /> A little music for the room.<br />PianoDisc · Prodigy II</div>
     </aside>

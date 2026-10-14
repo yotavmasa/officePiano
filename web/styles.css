@@ -1909,3 +1909,5 @@ h2,
 .song-row:hover .song-row-icon { display: none; }
 .song-row-icon { display: grid; place-items: center; }
 @media (hover: none) { .song-row .mini-art .sort-handle { display: grid; } .song-row-icon { display: none; } }
+.library-nav button.is-drop-ready { outline: 1px dashed #b9c9a8; outline-offset: -1px; }
+.library-nav button.is-drop-target { outline: 2px solid #4f7a3a; background: #dfe7d2; }
