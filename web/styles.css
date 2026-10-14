@@ -1882,3 +1882,11 @@ h2,
   .with-queue-panel .mini-player { right: 344px; }
 }
 @media (prefers-reduced-motion: reduce) { .queue-panel.is-open { animation: none; } }
+
+.queue-section + .queue-section { margin-top: 22px; }
+.queue-section-title { margin: 0 0 10px; font-size: 13px; font-weight: 700; letter-spacing: .02em; color: var(--forest); }
+.queue-now .queue-row { background: #f0f4e8; }
+.queue-now .song-name { color: #4f7a3a; font-weight: 600; }
+.queue-now .queue-number { color: #4f7a3a; justify-content: center; }
+.queue-now .queue-number svg { width: 14px; height: 14px; }
+.queue-now .equalizer { height: 14px; }
