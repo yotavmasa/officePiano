@@ -765,7 +765,7 @@ function App() {
     }, destination ? `Saved to ${destination.name}.` : 'Saved to All songs.');
   }
 
-  async function openAdaptation(requestedSongId) {
+  async function openAdaptation(requestedSongId, { applyNow = view === 'player' } = {}) {
     const songId = typeof requestedSongId === 'string' ? requestedSongId : status?.song_id || '';
     setAdaptationExpectedSongId(status?.song_id || '');
     const request = ++adaptationRequest.current;
@@ -776,7 +776,7 @@ function App() {
     setAdaptationAttempted(false);
     setAdaptationMode(status?.adaptation?.settings?.mode || 'no_drums');
     setAdaptationParts([]);
-    setDialog({ type: 'adaptation', applyNow: view === 'player' });
+    setDialog({ type: 'adaptation', applyNow });
     try {
       const data = await api(`/api/adaptation?song_id=${encodeURIComponent(songId)}`);
       if (request !== adaptationRequest.current) return;
@@ -916,6 +916,7 @@ function App() {
       </button>
       <div className="mini-player-progress"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Mini player timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
       <div className="mini-player-controls">
+        <button type="button" className="device-picker-button mini-player-sound" onClick={() => openAdaptation(undefined, { applyNow: true })} disabled={busy} aria-label={`Playback sound: ${soundName}. Change playback sound`} title={`Playback sound: ${soundName}`}><Icon name="piano" /></button>
         <DevicePicker {...pickerProps} />
         <button className="mini-player-play" aria-label={isPlaying ? 'Pause' : isPaused ? 'Resume' : 'Play'} disabled={isPlaying ? !onDevice && busy : !canPlay} onClick={() => isPlaying ? playerPause() : playerPlay()}>{onDevice && local.loading ? <span className="spinner" /> : <Icon name={isPlaying ? 'pause' : 'play'} />}</button>
         <button className="icon-button" aria-label="Next song" disabled={!canNext} onClick={() => playerSkip(1)}><Icon name="arrow" /></button>
