@@ -1888,3 +1888,10 @@ h2,
   .device-menu { position: fixed; left: 12px; right: 12px; bottom: calc(100px + env(safe-area-inset-bottom, 0px)); width: auto; }
   .device-option, .device-current { min-height: 52px; }
 }
+
+.nav-wip { font-size: 9px; font-weight: 700; letter-spacing: .04em; padding: 2px 5px; border-radius: 5px; background: #efe3bc; color: #6c5420; }
+.mobile-dock button { position: relative; }
+.mobile-dock .nav-wip { position: absolute; top: 1px; right: 1px; font-size: 7px; padding: 1px 3px; }
+
+.nav button:has(.nav-wip) { gap: 6px; white-space: nowrap; }
+.nav .nav-wip { font-size: 8px; padding: 2px 3px; }

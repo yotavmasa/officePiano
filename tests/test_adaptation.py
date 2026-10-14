@@ -53,6 +53,67 @@ def note_values(music):
 
 
 class AdaptationTests(unittest.TestCase):
+    def test_smart_joins_overlapping_keys_but_keeps_separate_repeated_attacks(self):
+        first = (0, 0, 'Left', [(60, 0, 480, 50), (60, 960, 1200, 40)], False)
+        second = (1, 0, 'Right', [(60, 240, 960, 70), (64, 0, 480, 44)], False)
+        result, report = adaptation.render(fixture([first, second]), {'mode': 'smart'})
+        self.assertEqual(note_values(parsed(result)), [(60, 0, 1.5, 50), (60, 1.5, 2., 40), (64, 0, .5, 44)])
+        self.assertEqual(report['merged_notes'], 1)
+        self.assertEqual(len(parsed(result).instruments), 1)
+
+    def test_smart_shifts_a_part_consistently_at_piano_range_boundary(self):
+        part = (0, 0, 'High phrase', [(107, 0, 480, 50), (109, 480, 960, 60)], False)
+        result, report = adaptation.render(fixture([part]), {'mode': 'smart'})
+        self.assertEqual([n[0] for n in note_values(parsed(result))], [95, 97])
+        self.assertEqual(report['shifted_notes'], 2)
+
+    def test_three_channel_overlap_keeps_first_note_on_and_last_note_off(self):
+        channels = [(0, 0, 'First', [(60, 0, 480, 50)], False),
+                    (1, 0, 'Middle', [(60, 240, 960, 70)], False),
+                    (2, 0, 'Last', [(60, 720, 1200, 80)], False)]
+        result, report = adaptation.render(fixture(channels), {'mode': 'smart'})
+        self.assertEqual(note_values(parsed(result)), [(60, 0, 2.0, 50)])
+        events = [e for t in mido.MidiFile(file=io.BytesIO(result)).tracks for e in t if e.type in ('note_on', 'note_off') and e.note == 60]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].type, 'note_on')
+        self.assertEqual(events[0].velocity, 50)
+        self.assertTrue(events[1].type == 'note_off' or events[1].velocity == 0)
+        self.assertEqual(report['merged_notes'], 2)
+
+    def test_merged_pedal_does_not_release_while_another_channel_holds_it(self):
+        class Part:
+            def __init__(self, controls):
+                self.control_changes = controls
+        first = Part([pretty_midi.ControlChange(64, 127, 0), pretty_midi.ControlChange(64, 0, 1)])
+        second = Part([pretty_midi.ControlChange(64, 127, .5), pretty_midi.ControlChange(64, 0, 1.5)])
+        controls = adaptation._merge_pedals(pretty_midi, [first, second])
+        self.assertEqual([(c.number, c.value, c.time) for c in controls], [(64, 127, 0), (64, 0, 1.5)])
+
+    def test_no_drums_preserves_all_other_events_at_their_original_ticks(self):
+        score = mido.MidiFile(file=io.BytesIO(fixture([PIANO_PART, BASS_PART, MELODY_PART, DRUM_PART])))
+        # A mixed track makes preserving delta times essential when drum events disappear.
+        score.tracks.append(mido.MidiTrack([mido.Message('note_on', channel=9, note=36, velocity=90, time=120), mido.Message('note_on', channel=3, note=12, velocity=31, time=120), mido.Message('note_off', channel=9, note=36, time=120), mido.Message('note_off', channel=3, note=12, time=120), mido.MetaMessage('end_of_track')]))
+        buffer = io.BytesIO(); score.save(file=buffer)
+        source = buffer.getvalue()
+        rendered, report = adaptation.render(source, {'mode': 'no_drums'})
+        result = mido.MidiFile(file=io.BytesIO(rendered))
+        def events(track):
+            tick, output = 0, []
+            for event in track:
+                tick += event.time
+                if getattr(event, 'channel', None) != 9:
+                    output.append((tick, event.copy(time=0)))
+            return output
+        self.assertEqual([events(t) for t in score.tracks], [events(t) for t in result.tracks])
+        self.assertFalse(any(getattr(e, 'channel', None) == 9 for t in result.tracks for e in t))
+        self.assertEqual(report['removed_notes'], 2)
+        self.assertEqual(report['shifted_notes'], 0)
+        self.assertEqual(source, buffer.getvalue())
+
+    def test_no_drums_rejects_a_drum_only_song(self):
+        with self.assertRaisesRegex(ValueError, 'no notes outside'):
+            adaptation.render(fixture([DRUM_PART]), {'mode': 'no_drums'})
+
     def test_analysis_and_piano_selection_are_stable(self):
         data = fixture([PIANO_PART, BASS_PART, MELODY_PART, DRUM_PART])
         first = adaptation.analyse(data)
@@ -115,13 +176,13 @@ class AdaptationTests(unittest.TestCase):
         self.assertEqual(len(parsed(result).instruments[0].notes), 3)
         self.assertEqual(len(parsed(result).instruments[0].control_changes), 2)
 
-    def test_smart_polyphony_cap_preserves_complete_retained_notes(self):
+    def test_smart_dense_chords_keep_all_notes(self):
         notes = [(pitch, 0, 960, pitch - 20) for pitch in range(50, 60)]
         data = fixture([(0, 0, 'Dense piano', notes, False)])
         result, report = adaptation.render(data, {'mode': 'smart'})
         values = note_values(parsed(result))
-        self.assertEqual(len(values), 8)
-        self.assertEqual(report['removed_notes'], 2)
+        self.assertEqual(len(values), 10)
+        self.assertEqual(report['removed_notes'], 0)
         self.assertIn(50, [note[0] for note in values]); self.assertIn(59, [note[0] for note in values])
         self.assertTrue(all(start == 0 and end == 1.5 and velocity == pitch - 20 for pitch, start, end, velocity in values))
         piano, _ = adaptation.render(data, {'mode': 'piano'})
@@ -133,8 +194,8 @@ class AdaptationTests(unittest.TestCase):
         data = fixture([(0, 0, 'Piano', notes, False)])
         result, report = adaptation.render(data, {'mode': 'smart'})
         values = note_values(parsed(result))
-        self.assertEqual(report['removed_notes'], 1)
-        self.assertNotIn(80, [note[0] for note in values])
+        self.assertEqual(report['removed_notes'], 0)
+        self.assertIn(80, [note[0] for note in values])
         self.assertEqual([note for note in values if note[0] == 81], [(81, 1.5, 2.5, 71)])
         self.assertTrue(all(end == 1.5 for pitch, _, end, _ in values if pitch < 80))
         self.assertAlmostEqual(report['duration_seconds'], 2.5, places=2)
