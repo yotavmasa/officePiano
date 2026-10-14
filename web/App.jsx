@@ -1040,7 +1040,6 @@ function App() {
     const entry = queueEntryIds[index];
     const picked = queueSelectedKeys.includes(entry);
     return <div {...rowProps} className={`queue-row ${isCurrent ? 'is-current' : ''} ${picked ? 'is-selected' : ''} ${drop}`} role="listitem" data-queue-index={index} data-queue-current={isCurrent ? 'true' : undefined} onClick={event => queueRowClick(event, index, isCurrent)} onContextMenu={event => { event.preventDefault(); openQueueMenu(index, event.clientX, event.clientY, event.currentTarget.querySelector('.song-more')); }}>
-      <label className="song-check" title={`Select ${song.name}`}><input type="checkbox" checked={picked} aria-label={`Select queued song: ${song.name}`} onChange={() => toggleQueueSelected(entry)} /></label>
       <span className="queue-number">{isCurrent
         ? isPlaying ? <span className="equalizer" aria-hidden="true"><i /><i /><i /></span> : <Icon name={isPaused ? 'pause' : 'play'} />
         : <><button className="sort-handle" disabled={busy || section.end - section.start < 2} aria-label={`Reorder queued song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button><span className="queue-position">{String(index - section.start + 1).padStart(2, '0')}</span></>}</span>
