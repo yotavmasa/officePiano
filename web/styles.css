@@ -1891,7 +1891,7 @@ h2,
 .queue-now .equalizer { height: 14px; }
 
 /* Compact single-line queue rows on the Player page and in the side panel */
-.queue-section .queue-row { grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 10px; padding: 7px 12px; }
+.queue-section .queue-row { grid-template-columns: 26px minmax(0, 1fr) auto auto; gap: 10px; padding: 7px 12px; }
 .queue-section .queue-row > .duration { display: block; font-size: 11px; }
 .queue-section .queue-number { flex-direction: row; gap: 2px; font-size: 11px; }
 .queue-section .queue-row .song-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1899,3 +1899,8 @@ h2,
 .queue-section .queue-row > .row-actions { grid-column: auto; padding: 0; flex-wrap: nowrap; justify-content: flex-end; gap: 2px; }
 .queue-section .queue-row .row-actions button { width: 28px; height: 28px; }
 .queue-section .sort-handle { width: 22px; height: 28px; }
+.queue-section .queue-number { justify-content: center; }
+.queue-section .queue-number .sort-handle { display: none; }
+.queue-section .queue-row:hover .queue-number .sort-handle { display: grid; }
+.queue-section .queue-row:hover .queue-position { display: none; }
+@media (hover: none) { .queue-section .queue-number .sort-handle { display: grid; } .queue-section .queue-position { display: none; } }
