@@ -866,8 +866,32 @@ function App() {
         </article>;
   }
 
+  function queueTargetAt(point) {
+    if (!showQueuePanel) return null;
+    const stack = document.elementsFromPoint(point.x, point.y);
+    if (stack.some(element => element.closest?.('.mini-player-queue'))) return { button: true };
+    const inside = stack.find(element => element.closest?.('#queue-panel'));
+    return inside ? queueDropTarget({ target: inside, clientY: point.y }) : null;
+  }
+  const songQueueDrag = {
+    isOutside: point => !!queueTargetAt(point),
+    onOutsideMove: point => {
+      const target = queueTargetAt(point);
+      if (target?.button && !queueVisible) setQueueVisible(true);
+      const next = target && !target.button ? target : null;
+      if (next?.index !== queueDrop?.index || next?.row !== queueDrop?.row) setQueueDrop(next);
+    },
+    onDropOutside: (point, songId) => {
+      const target = queueTargetAt(point);
+      setQueueDrop(null);
+      if (target) queueAction('add', target.button ? { song_id: songId } : { song_id: songId, index: target.index, expected_song_ids: queueIds }, 'Added to the queue.');
+    },
+    outsideHint: 'Drop to add to the queue',
+  };
+
   function renderSavedSongs(songs, groupId) {
-    return <SortableList items={songs.map(song => song.id)} getLabel={id => songTitle(library.songs.find(song => song.id === id)?.name)} onStart={from => startReorder('songs', from, groupId)} onEnd={finishReorder} onCancel={cancelReorder}>
+    const endSongDrag = () => { setDraggingSong(''); setQueueDrop(null); };
+    return <SortableList items={songs.map(song => song.id)} getLabel={id => songTitle(library.songs.find(song => song.id === id)?.name)} onStart={from => { startReorder('songs', from, groupId); if (showQueuePanel) setDraggingSong(songs[from]?.id || ''); }} onEnd={to => { endSongDrag(); return finishReorder(to); }} onCancel={() => { endSongDrag(); cancelReorder(); }} {...songQueueDrag}>
         <div className="song-list">{!songs.length ? <EmptyState icon={filter ? 'search' : view === 'favorites' ? 'heart' : 'note'} title={filter ? 'No matching pieces' : view === 'favorites' ? 'Keep your favorites close' : 'Make room for a little music.'} description={filter ? 'Try another title.' : view === 'favorites' ? 'Tap the heart beside a saved song to keep it here.' : view === 'sheets' ? 'Upload sheet music above. Converted pieces will appear here.' : 'Upload a MIDI file, or find a new piece in Discover.'} button={filter || view === 'favorites' || view === 'sheets' ? null : 'Discover music'} onClick={() => navigate('discover')} /> : <><div className="list-labels"><span /><span>Piece</span><span className="type-label">Instrument</span><span>Time</span><span style={{ textAlign: 'right' }}>Make it yours</span></div>{songs.map((song, index) => {
           const piano = song.piano_only === true;
           return <SortableItem key={song.id} id={song.id} disabled={busy || songs.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} {...songDragProps(song)} className={`song-row ${playerSongId === song.id ? 'is-current' : ''} ${draggingSong === song.id ? 'is-queue-dragging' : ''}`}><div className="mini-art"><button className="sort-handle" disabled={busy || songs.length < 2} aria-label={`Reorder song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button></div><div className="song-info"><button className="song-name song-name-button" title={`Choose playback sound for ${song.name}`} aria-label={`Choose playback sound for ${song.name}`} disabled={busy} onClick={() => openAdaptation(song.id)}>{songTitle(song.name)}</button>{(song.artist || song.album) && <div className="song-record">{[song.artist, song.album].filter(Boolean).join(' · ')}</div>}<div className="song-sub">{piano ? 'Piano only' : 'Other MIDI'} · {song.source_url ? `From ${providerName(song.source_url)}` : song.source_kind === 'sheet' ? 'From sheet music' : 'Uploaded'} · Saved locally</div>{groupId && (sheets.song_sources || []).filter(source => source.song_id === song.id && source.source_id === groupId).slice(0, 1).map(source => <div key={source.song_id}>{source.pages?.length > 0 && <p className="sheet-song-pages">PDF {source.pages.length === 1 ? 'page' : 'pages'} {source.pages.join(', ')}</p>}{source.warning && <p className="sheet-file-warning">{source.warning}</p>}</div>)}</div><span className={`piano-badge ${piano ? '' : 'candidate'}`}>{piano ? 'Piano only' : 'Other MIDI'}</span><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="heart" active={song.favorite} disabled={busy} label={`${song.favorite ? 'Remove from' : 'Add to'} favorites: ${song.name}`} onClick={() => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite }))} /><IconButton icon="folder" label={`Choose libraries for ${song.name}`} onClick={() => setDialog({ type: 'assign', songId: song.id })} /><IconButton icon="download" label={`Download MIDI: ${song.name}`} onClick={() => download(song)} />{song.source_kind === 'sheet' && <IconButton icon="book" label={`Download editable score: ${song.name}`} onClick={() => downloadRecognizedScore(song)} />}<IconButton icon="edit" label={`Edit song: ${song.name}`} disabled={busy} onClick={() => { setLibraryName(songTitle(song.name)); setSongArtist(song.artist || ''); setSongAlbum(song.album || ''); setDialog({ type: 'rename_song', songId: song.id }); }} /><IconButton icon="trash" label={`Delete song: ${song.name}`} disabled={busy} onClick={() => setDialog({ type: 'delete', songId: song.id })} /><IconButton icon="plus" label={`Add to queue: ${song.name}`} disabled={busy} onClick={() => queueAction('add', { song_id: song.id }, 'Added to the Player queue.')} /><IconButton icon="play" label={`Play ${song.name}`} disabled={onDevice ? local.loading : busy} onClick={() => playSong(song)} /></div></div>}</SortableItem>;
