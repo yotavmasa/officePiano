@@ -95,6 +95,7 @@ function Icon({ name, style }) {
     book: <><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Z M12 5v15" /></>,
     folder: <path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
     wifi: <><path d="M3 8a15 15 0 0 1 18 0M6 12a10 10 0 0 1 12 0m-9 4a5 5 0 0 1 6 0" /><circle cx="12" cy="20" r=".5" fill="currentColor" /></>,
+    queue: <path d="M4 6h12M4 12h12M4 18h8m8-3v6l-4-3Z" />,
     close: <path d="m6 6 12 12M6 18 18 6" />,
     link: <path d="m10 14 4-4m-5 1L7 13a4 4 0 0 0 6 6l2-2m0-6 2-2a4 4 0 0 0-6-6l-2 2" />,
     devices: <><rect x="3" y="3" width="11" height="18" rx="2" /><circle cx="8.5" cy="14" r="3" /><path d="M8.5 7h.01M17 7h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3" /></>,
@@ -321,6 +322,21 @@ function App() {
   const local = useLocalListener(loadSongNotes, () => advanceLocal.current?.());
   const [showNotes, setShowNotes] = useState(() => storage.get('piano-falling-notes') === 'on');
   const pianoClock = useRef({ seconds: 0, playing: false, at: 0 });
+  const [queueOpen, setQueueOpen] = useState(false);
+  const queueClose = useRef(null);
+  const queueTrigger = useRef(null);
+  useEffect(() => { setQueueOpen(false); }, [view]);
+  useEffect(() => {
+    if (!queueOpen) return;
+    queueClose.current?.focus();
+    const escape = event => { if (event.key === 'Escape') setQueueOpen(false); };
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('keydown', escape);
+      const focused = document.activeElement;
+      if (!focused || focused === document.body || document.getElementById('queue-panel')?.contains(focused)) queueTrigger.current?.focus();
+    };
+  }, [queueOpen]);
   async function listenHere(song, index = null, startAt = 0) {
     announce('');
     setLocalIndex(index);
@@ -843,10 +859,22 @@ function App() {
         })}</>}</div></SortableList>;
   }
 
+  const queueContent = <>
+        <div className="content-heading queue-header"><div><h2>Your queue</h2><p className="section-note">{queueIds.length ? `${queueIds.length} ${queueIds.length === 1 ? 'piece' : 'pieces'} · Plays in order. Reorder to set the mood.` : 'Add songs from your music or queue a whole library.'}</p></div><div className="queue-tools"><button className="btn small" disabled={!queueIds.length || (onDevice ? local.loading : busy || !playable || playing)} onClick={() => onDevice ? playQueued(0) : queueAction('play')}><Icon name="play" />Play queue</button><button className="btn light small" disabled={busy || !queueIds.length} onClick={() => queueAction('clear')}>Clear queue</button></div></div>
+        <SortableList items={queueEntryIds} getLabel={entry => songTitle(library.songs.find(song => song.id === queueIds[queueEntryIds.indexOf(entry)])?.name)} onStart={from => startReorder('queue', from)} onEnd={finishReorder} onCancel={cancelReorder}>
+        <div className="song-list" role="list" aria-label="Song queue">{!queueIds.length ? <EmptyState title="Your next song starts here." description="Add a few favorites or queue an entire library. Nothing starts until you press play." button="Browse your music" onClick={() => navigate('all')} /> : queueIds.map((id, index) => {
+          const song = library.songs.find(item => item.id === id);
+          const entryKey = `${id}-${queueIds.slice(0, index).filter(queuedId => queuedId === id).length}`;
+          if (!song) return null;
+          return <SortableItem key={entryKey} id={entryKey} disabled={busy || queueIds.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} className={`queue-row ${index === activeIndex ? 'is-current' : ''}`} role="listitem"><span className="queue-number"><button className="sort-handle" disabled={busy || queueIds.length < 2} aria-label={`Reorder queued song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button>{String(index + 1).padStart(2, '0')}</span><div className="song-info"><div className="song-name" title={song.name}>{songTitle(song.name)}</div><div className="queue-status">{index === activeIndex ? isPlaying ? 'Now playing' : 'Selected' : activeIndex >= 0 && index < activeIndex ? 'Earlier in queue' : 'Up next'} · {song.piano_only === true ? 'Piano only' : 'Other MIDI'}</div></div><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="arrow" style={{ transform: 'rotate(-90deg)' }} label={`Move up: ${song.name}`} disabled={busy || index === 0} onClick={() => queueAction('move', { from: index, to: index - 1 })} /><IconButton icon="arrow" style={{ transform: 'rotate(90deg)' }} label={`Move down: ${song.name}`} disabled={busy || index === queueIds.length - 1} onClick={() => queueAction('move', { from: index, to: index + 1 })} /><IconButton icon="play" label={`Play queued song: ${song.name}`} disabled={onDevice ? local.loading : busy || !playable} onClick={() => playQueued(index)} /><IconButton icon="close" label={`Remove from queue: ${song.name}`} disabled={busy} onClick={() => queueAction('remove', { index })} /></div></div>}</SortableItem>;
+        })}</div></SortableList>
+  </>;
+  const showQueuePanel = view !== 'player';
+
   const viewTitle = view === 'sheets' ? 'Songs from sheet music' : view === 'favorites' ? 'Your favorites' : selectedLibrary?.name || 'All songs';
   const viewNote = view === 'sheets' ? 'Converted on this Mac. Review the notes before playing.' : view === 'favorites' ? 'The pieces you come back to.' : selectedLibrary ? 'A collection made for your room.' : 'Good music, always within reach.';
 
-  return <div className={`shell ${view !== 'player' ? 'with-mini-player' : ''}`}>
+  return <div className={`shell ${view !== 'player' ? 'with-mini-player with-queue-panel' : ''}`}>
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><Icon name="piano" /></span>Office Piano</div>
       <nav className="nav" aria-label="Music">
@@ -874,14 +902,7 @@ function App() {
           <div className="notes-panel-header"><div><h2 id="notes-heading">Falling notes</h2><p className="section-note">Notes from the original file, without drums.</p></div><button type="button" className="btn small" aria-expanded={showNotes} aria-controls="falling-notes" onClick={toggleNotes}>{showNotes ? 'Hide' : 'Show'}</button></div>
           {showNotes && <div id="falling-notes"><FallingNotes songId={playerSongId} loadSong={loadSongNotes} getTime={notesTime} playing={notesPlaying} position={playerElapsed} /></div>}
         </section>
-        <div className="content-heading queue-header"><div><h2>Your queue</h2><p className="section-note">{queueIds.length ? `${queueIds.length} ${queueIds.length === 1 ? 'piece' : 'pieces'} · Plays in order. Reorder to set the mood.` : 'Add songs from your music or queue a whole library.'}</p></div><div className="queue-tools"><button className="btn small" disabled={!queueIds.length || (onDevice ? local.loading : busy || !playable || playing)} onClick={() => onDevice ? playQueued(0) : queueAction('play')}><Icon name="play" />Play queue</button><button className="btn light small" disabled={busy || !queueIds.length} onClick={() => queueAction('clear')}>Clear queue</button></div></div>
-        <SortableList items={queueEntryIds} getLabel={entry => songTitle(library.songs.find(song => song.id === queueIds[queueEntryIds.indexOf(entry)])?.name)} onStart={from => startReorder('queue', from)} onEnd={finishReorder} onCancel={cancelReorder}>
-        <div className="song-list" role="list" aria-label="Song queue">{!queueIds.length ? <EmptyState title="Your next song starts here." description="Add a few favorites or queue an entire library. Nothing starts until you press play." button="Browse your music" onClick={() => navigate('all')} /> : queueIds.map((id, index) => {
-          const song = library.songs.find(item => item.id === id);
-          const entryKey = `${id}-${queueIds.slice(0, index).filter(queuedId => queuedId === id).length}`;
-          if (!song) return null;
-          return <SortableItem key={entryKey} id={entryKey} disabled={busy || queueIds.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} className={`queue-row ${index === activeIndex ? 'is-current' : ''}`} role="listitem"><span className="queue-number"><button className="sort-handle" disabled={busy || queueIds.length < 2} aria-label={`Reorder queued song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button>{String(index + 1).padStart(2, '0')}</span><div className="song-info"><div className="song-name" title={song.name}>{songTitle(song.name)}</div><div className="queue-status">{index === activeIndex ? isPlaying ? 'Now playing' : 'Selected' : activeIndex >= 0 && index < activeIndex ? 'Earlier in queue' : 'Up next'} · {song.piano_only === true ? 'Piano only' : 'Other MIDI'}</div></div><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="arrow" style={{ transform: 'rotate(-90deg)' }} label={`Move up: ${song.name}`} disabled={busy || index === 0} onClick={() => queueAction('move', { from: index, to: index - 1 })} /><IconButton icon="arrow" style={{ transform: 'rotate(90deg)' }} label={`Move down: ${song.name}`} disabled={busy || index === queueIds.length - 1} onClick={() => queueAction('move', { from: index, to: index + 1 })} /><IconButton icon="play" label={`Play queued song: ${song.name}`} disabled={onDevice ? local.loading : busy || !playable} onClick={() => playQueued(index)} /><IconButton icon="close" label={`Remove from queue: ${song.name}`} disabled={busy} onClick={() => queueAction('remove', { index })} /></div></div>}</SortableItem>;
-        })}</div></SortableList>
+        {queueContent}
       </section>}
 
       {view === 'sheets' && <section className="sheet-import" aria-label="Sheet music files">
@@ -909,6 +930,11 @@ function App() {
 
       <footer className="footer"><span>Songs saved on the piano computer. Download a copy anytime.</span><button onClick={() => { setCopied(false); setDialog({ type: 'remote' }); }}><Icon name="wifi" />Control over Wi-Fi</button></footer>
     </main>
+    {showQueuePanel && <aside className={`queue-panel ${queueOpen ? 'is-open' : ''}`} id="queue-panel" aria-label="Queue">
+      <button type="button" ref={queueClose} className="icon-button queue-panel-close" aria-label="Close queue" title="Close queue" onClick={() => setQueueOpen(false)}><Icon name="close" /></button>
+      {queueContent}
+    </aside>}
+    {showQueuePanel && queueOpen && <div className="queue-backdrop" aria-hidden="true" onClick={() => setQueueOpen(false)} />}
     {view !== 'player' && <section className="mini-player" aria-label="Mini player">
       <button className="mini-player-song" onClick={() => navigate('player')} aria-label="Open full player">
         <span className="mini-player-art">{canLoadArtwork ? <img src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} /> : <Icon name="piano" />}</span>
@@ -917,6 +943,7 @@ function App() {
       <div className="mini-player-progress"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Mini player timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
       <div className="mini-player-controls">
         <button type="button" className="device-picker-button mini-player-sound" onClick={() => openAdaptation(undefined, { applyNow: true })} disabled={busy} aria-label={`Playback sound: ${soundName}. Change playback sound`} title={`Playback sound: ${soundName}`}><Icon name="piano" /></button>
+        <button type="button" ref={queueTrigger} className="device-picker-button mini-player-queue" aria-label={`Show queue, ${queueIds.length} ${queueIds.length === 1 ? 'song' : 'songs'}`} title="Show queue" aria-expanded={queueOpen} aria-controls="queue-panel" onClick={() => setQueueOpen(true)}><Icon name="queue" />{queueIds.length > 0 && <span className="queue-count" aria-hidden="true">{queueIds.length}</span>}</button>
         <DevicePicker {...pickerProps} />
         <button className="mini-player-play" aria-label={isPlaying ? 'Pause' : isPaused ? 'Resume' : 'Play'} disabled={isPlaying ? !onDevice && busy : !canPlay} onClick={() => isPlaying ? playerPause() : playerPlay()}>{onDevice && local.loading ? <span className="spinner" /> : <Icon name={isPlaying ? 'pause' : 'play'} />}</button>
         <button className="icon-button" aria-label="Next song" disabled={!canNext} onClick={() => playerSkip(1)}><Icon name="arrow" /></button>

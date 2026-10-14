@@ -1855,3 +1855,30 @@ h2,
 .sound-button .experimental-badge { padding: 2px 5px; font-size: 10px; }
 .adaptation-report { margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; background: #f2f5ec; font-size: 12px; line-height: 1.55; color: var(--muted); overflow-wrap: anywhere; }
 @media (max-width: 740px) { .sound-button { flex-shrink: 0; padding: 0 9px; } .sound-button-label { display: none; } }
+
+.queue-panel { position: fixed; z-index: 45; top: 0; right: 0; bottom: 0; width: min(360px, calc(100vw - 32px)); padding: 24px 18px 24px; overflow-y: auto; overscroll-behavior: contain; background: #f0f1e9; border-left: 1px solid var(--line); box-shadow: -12px 0 30px #162d3320; display: none; }
+.queue-panel.is-open { display: block; animation: queue-slide 200ms ease-out; }
+@keyframes queue-slide { from { transform: translateX(100%); } }
+.queue-backdrop { position: fixed; z-index: 44; inset: 0; background: #162d3340; }
+.queue-panel-close { float: right; width: 34px; height: 34px; display: grid; place-items: center; margin: -4px -4px 0 8px; border-radius: 8px; }
+.queue-panel-close:hover { background: #e2e7da; }
+.queue-panel .queue-header { margin-top: 0; flex-direction: column; align-items: stretch; gap: 12px; }
+.queue-panel .queue-header h2 { margin: 0 0 4px; font-size: 21px; }
+.queue-panel .queue-header .section-note { margin: 0; line-height: 1.5; }
+.queue-panel .queue-tools { flex-wrap: wrap; }
+.queue-panel .song-list { clear: both; }
+.queue-panel .queue-row { grid-template-columns: 26px minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px; }
+.queue-panel .queue-row > .duration { display: block; font-size: 11px; }
+.queue-panel .queue-row .song-name { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
+.queue-panel .queue-row > .row-actions { grid-column: 2 / -1; justify-content: flex-start; flex-wrap: wrap; gap: 4px; padding-top: 2px; }
+.queue-panel .queue-row .row-actions button { width: 34px; height: 32px; }
+.queue-panel .empty { padding: 28px 16px; }
+.mini-player-queue { position: relative; }
+.queue-count { position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: #d8e4bc; color: #243e35; font-size: 9px; font-weight: 700; line-height: 15px; text-align: center; }
+@media (min-width: 1280px) {
+  .shell.with-queue-panel { grid-template-columns: 238px minmax(0, 1fr) 320px; }
+  .with-queue-panel .queue-panel { display: block; position: sticky; z-index: auto; top: 0; height: 100vh; width: auto; box-shadow: none; animation: none; }
+  .with-queue-panel .queue-panel-close, .with-queue-panel .queue-backdrop, .mini-player-controls > .mini-player-queue { display: none; }
+  .with-queue-panel .mini-player { right: 344px; }
+}
+@media (prefers-reduced-motion: reduce) { .queue-panel.is-open { animation: none; } }
