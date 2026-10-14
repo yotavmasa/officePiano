@@ -4,9 +4,10 @@ from itertools import zip_longest
 import urllib.parse
 from . import bitmidi
 from . import freemidi
+from .catalogs import bushgrafts, kunstderfuge
 
-PROVIDERS = {'bitmidi': bitmidi, 'freemidi': freemidi}
-LABELS = {'bitmidi': 'BitMidi', 'freemidi': 'FreeMidi'}
+PROVIDERS = {'bitmidi': bitmidi, 'freemidi': freemidi, 'bushgrafts': bushgrafts, 'kunstderfuge': kunstderfuge}
+LABELS = {'bitmidi': 'BitMidi', 'freemidi': 'FreeMidi', 'bushgrafts': 'Bushgrafts', 'kunstderfuge': 'Kunst der Fuge'}
 
 
 def search(query, page=1, source='bitmidi'):
@@ -14,9 +15,9 @@ def search(query, page=1, source='bitmidi'):
         raise ValueError('Enter a song, artist, or composer to search.')
     if type(page) is not int or not 1 <= page <= 1000:
         raise ValueError('Choose a valid results page.')
-    if source not in (*PROVIDERS, 'both'):
-        raise ValueError('Choose BitMidi, FreeMidi, or both.')
-    names = list(PROVIDERS) if source == 'both' else [source]
+    if source not in (*PROVIDERS, 'both', 'all'):
+        raise ValueError('Choose a MIDI source or all sites.')
+    names = list(PROVIDERS) if source == 'all' else ['bitmidi', 'freemidi'] if source == 'both' else [source]
     def fetch(name):
         try:
             result = PROVIDERS[name].search(query, page)
@@ -47,4 +48,8 @@ def download(url):
         return bitmidi.download(url)
     if host in ('freemidi.org', 'www.freemidi.org'):
         return freemidi.download(url)
-    raise ValueError('Choose a song from BitMidi or FreeMidi.')
+    if host in ('bushgrafts.com', 'www.bushgrafts.com'):
+        return bushgrafts.download(url)
+    if host in ('kunstderfuge.com', 'www.kunstderfuge.com'):
+        return kunstderfuge.download(url)
+    raise ValueError('Choose a song from one of the supported MIDI sources.')

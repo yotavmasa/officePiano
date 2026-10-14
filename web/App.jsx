@@ -49,16 +49,24 @@ function reorderedSongIds(fullIds, visibleIds, from, to) {
 const safeSource = source => {
   try {
     const url = new URL(source);
-    return url.protocol === 'https:' && ['bitmidi.com', 'www.bitmidi.com', 'freemidi.org', 'www.freemidi.org'].includes(url.hostname) ? url.href : null;
+    return url.protocol === 'https:' && ['bitmidi.com', 'www.bitmidi.com', 'freemidi.org', 'www.freemidi.org', 'bushgrafts.com', 'www.bushgrafts.com', 'kunstderfuge.com', 'www.kunstderfuge.com'].includes(url.hostname) ? url.href : null;
   } catch { return null; }
 };
 
+const sourceDescriptions = {
+  all: 'All four catalogs: popular songs, jazz piano performances, and classical music.',
+  both: 'BitMidi and FreeMidi: popular songs, games, and mixed-instrument arrangements.',
+  bitmidi: 'BitMidi: popular songs and game music.',
+  freemidi: 'FreeMidi: songs across many artists and genres.',
+  bushgrafts: 'Bushgrafts: Doug McKenzie’s jazz piano performances, including solo, duet, and trio recordings.',
+  kunstderfuge: 'Kunst der Fuge: classical music by composer, including piano works and other instruments. Download limits may apply.',
+};
+const sourceLabels = { bitmidi: 'BitMidi', freemidi: 'FreeMidi', bushgrafts: 'Bushgrafts', kunstderfuge: 'Kunst der Fuge' };
 const providerName = source => {
   try {
-    return ['freemidi.org', 'www.freemidi.org'].includes(new URL(source).hostname) ? 'FreeMidi' : 'BitMidi';
-  } catch {
-    return /^freemidi$/i.test(String(source || '')) ? 'FreeMidi' : 'BitMidi';
-  }
+    const host = new URL(source).hostname.replace(/^www\./, '');
+    return sourceLabels[{ 'bitmidi.com': 'bitmidi', 'freemidi.org': 'freemidi', 'bushgrafts.com': 'bushgrafts', 'kunstderfuge.com': 'kunstderfuge' }[host]] || 'MIDI source';
+  } catch { return sourceLabels[source] || 'MIDI source'; }
 };
 
 function Icon({ name, style }) {
@@ -138,7 +146,7 @@ function SearchResult({ result, libraries, busy, onSave, notice }) {
       <div className="mini-art"><Icon name="note" /></div>
       <div className="song-info result-info">
         <div className="song-name" title={result.name}>{result.name}</div>
-        <div className="song-sub result-source">{provider}</div>
+        <div className="song-sub result-source">{provider}{result.source === 'bushgrafts' ? ' · Jazz piano' : result.source === 'kunstderfuge' ? ' · Classical' : ''}</div>
         <span className={`result-badge ${piano ? '' : result.piano_only === false ? 'other' : 'unchecked'}`}>
           {piano ? 'Piano only' : result.piano_only === false ? 'Other MIDI' : 'Not checked'}
         </span>
@@ -195,7 +203,7 @@ function App() {
   const [query, setQuery] = useState('');
   const [searchSource, setSearchSource] = useState(() => {
     const saved = storage.get('piano-search-source');
-    return ['bitmidi', 'freemidi', 'both'].includes(saved) ? saved : 'both';
+    return ['bitmidi', 'freemidi', 'bushgrafts', 'kunstderfuge', 'both', 'all'].includes(saved) ? saved : 'all';
   });
   const [searchData, setSearchData] = useState({ results: [], page: 0, query: '', hasMore: false, checked: 0, searched: false, source: searchSource, warnings: [] });
   const [searching, setSearching] = useState(false);
@@ -713,7 +721,7 @@ function App() {
         {renderSavedSongs(listedSongs, view === 'sheets' ? 'loose' : undefined)}
       </section>}
 
-      {view === 'discover' && <section aria-label="Discover music"><div className="discover-toolbar"><label className="source-chooser"><span>Source</span><select value={searchSource} onChange={event => chooseSearchSource(event.target.value)}><option value="both">Both sites</option><option value="bitmidi">BitMidi</option><option value="freemidi">FreeMidi</option></select></label><form className="search" onSubmit={event => { event.preventDefault(); search(); }}><Icon name="search" /><input type="search" placeholder="Search a song, composer, or artist…" aria-label="Search MIDI sites" required maxLength="120" value={query} onChange={event => setQuery(event.target.value)} /><button className="btn" type="submit">{searching ? <><span className="spinner" />Checking</> : 'Search'}</button></form></div><p className="discovery-note">Search shows all matches. <strong>Piano-only</strong> files are marked; other MIDI can also play on the piano.</p><div className="search-warnings" role="status">{searchData.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div><p className="section-note" style={{ margin: '0 0 14px' }} aria-live="polite">{searching ? 'Checking piano parts… This can take a moment.' : searchData.searched ? `${searchData.results.length}${Number.isInteger(searchData.totalMatches) ? ` of ${searchData.totalMatches}` : ''} songs shown · ${searchData.results.filter(result => result.piano_only === true).length} piano-only${searchData.hasMore ? ' · More available below' : ''}` : ''}</p><div className="song-list results">{searchData.results.length ? searchData.results.map((result, index) => <SearchResult key={`${result.url}-${index}`} result={result} libraries={library.libraries} busy={busy} onSave={saveResult} notice={notice} />) : searchData.searched ? <EmptyState title="No songs found in this batch." description="Try the next results, or search another title or composer." /> : <EmptyState icon="search" title="Find a song" description="Try a song title, artist, or composer." />}</div>{searchData.hasMore && <button className="btn light load-more" disabled={searching} onClick={() => search(true)}>Load more songs</button>}</section>}
+      {view === 'discover' && <section aria-label="Discover music"><div className="discover-toolbar"><label className="source-chooser"><span>Source</span><select value={searchSource} onChange={event => chooseSearchSource(event.target.value)}><option value="all">All sites</option><option value="both">BitMidi + FreeMidi</option><option value="bitmidi">BitMidi</option><option value="freemidi">FreeMidi</option><option value="bushgrafts">Bushgrafts · Jazz</option><option value="kunstderfuge">Kunst der Fuge · Classical</option></select></label><form className="search" onSubmit={event => { event.preventDefault(); search(); }}><Icon name="search" /><input type="search" placeholder="Search a song, composer, or artist…" aria-label="Search MIDI sites" required maxLength="120" value={query} onChange={event => setQuery(event.target.value)} /><button className="btn" type="submit">{searching ? <><span className="spinner" />Checking</> : 'Search'}</button></form></div><p className="discovery-note" aria-live="polite">{sourceDescriptions[searchSource]}</p><p className="discovery-note">Search shows all matches. <strong>Piano-only</strong> files are marked; other MIDI can also play on the piano.</p><div className="search-warnings" role="status">{searchData.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div><p className="section-note" style={{ margin: '0 0 14px' }} aria-live="polite">{searching ? 'Searching catalogs… This can take a moment.' : searchData.searched ? `${searchData.results.length}${Number.isInteger(searchData.totalMatches) ? ` of ${searchData.totalMatches}` : ''} songs shown · ${searchData.results.filter(result => result.piano_only === true).length} piano-only${searchData.hasMore ? ' · More available below' : ''}` : ''}</p><div className="song-list results">{searchData.results.length ? searchData.results.map((result, index) => <SearchResult key={`${result.url}-${index}`} result={result} libraries={library.libraries} busy={busy} onSave={saveResult} notice={notice} />) : searchData.searched ? <EmptyState title="No songs found in this batch." description="Try the next results, or search another title or composer." /> : <EmptyState icon="search" title="Find a song" description="Try a song title, artist, or composer." />}</div>{searchData.hasMore && <button className="btn light load-more" disabled={searching} onClick={() => search(true)}>Load more songs</button>}</section>}
 
       <footer className="footer"><span>Songs saved on the piano computer. Download a copy anytime.</span><button onClick={() => { setCopied(false); setDialog({ type: 'remote' }); }}><Icon name="wifi" />Control over Wi-Fi</button></footer>
     </main>

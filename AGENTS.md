@@ -17,6 +17,7 @@ Applies to this entire repository. Prefer the smallest complete fix; preserve wo
 - Finished songs leave the queue and the next plays. Pause/Stop/disconnect retain queued songs. Reordering preserves the current item, including duplicate IDs.
 - Queue and library order persist; filtered dragging preserves hidden songs. Collection order is independent of global order.
 - Mixed-instrument MIDI is allowed and marked. Preserve originals; adaptation produces a temporary playback copy.
+- Discover includes BitMidi/FreeMidi/Bushgrafts/Kunst der Fuge. Keep catalog descriptions and composer subpages searchable. Respect classical download allowances: search never downloads classical MIDI for classification; check when saved through the site's public flow. Redirects/downloads stay scoped to each provider's HTTPS hosts.
 - Original/Piano/Smart/custom parts are saved per song. Smart is experimental; never claim equivalence to a professional arrangement.
 - Volume uses CC7/CC39; do not silently reintroduce velocity scaling. Bluetooth reconnect never autoplays. Panic releases pedals/keys before stop and seek.
 - Seeking uses tempo-aware seconds and preserves playing/paused state. Validate song identity to reject stale requests.
