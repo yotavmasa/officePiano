@@ -6,6 +6,7 @@ import platform
 import shutil
 import re
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -120,10 +121,15 @@ class SheetStore:
         self.state = self.folder / 'index.json'
         self.items = json.loads(self.state.read_text()) if self.state.exists() else []
         self.process = None
+        self.analysis_process = None
+        self.analysis_closed = False
+        self.analysis_worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='book-analysis')
         self.worker = ThreadPoolExecutor(max_workers=1, thread_name_prefix='sheet-conversion')
         for item in self.items:
             if item['status'] in ('queued', 'converting'):
                 item.update(status='error', error='Conversion was interrupted. Upload or select the pages again.')
+            if item.get('analysis_status') in ('queued', 'analyzing'):
+                item.update(analysis_status='error', analysis_error='Book analysis was interrupted. Analyze it again.')
         self._save()
 
     def _save(self):
@@ -146,6 +152,113 @@ class SheetStore:
             item = self._item(identity)
             parent = self._item(item.get('book_id', identity))
             return self.folder / parent['id'] / ('source' + parent['extension']), parent['filename']
+
+    def _book(self, identity):
+        item = self._item(identity)
+        parent = self._item(item.get('book_id', identity))
+        if parent['extension'] != '.pdf':
+            raise ValueError('Choose a PDF book.')
+        return parent
+
+    def book(self, identity):
+        with self.lock:
+            return dict(self._book(identity))
+
+    def analyse_book(self, identity):
+        with self.lock:
+            book = self._book(identity)
+            if self.analysis_closed:
+                raise ValueError('Book analysis is stopping. Restart the app.')
+            if book.get('analysis_status') in ('queued', 'analyzing', 'ready'):
+                return dict(book)
+            book.update(analysis_status='queued', analysis_progress={'done': 0, 'total': book['page_count']},
+                        analysis_error='', candidates=[], music_pages=[], skipped_pages=[], analysis_warnings=[])
+            self._save()
+            result = dict(book)
+        self.analysis_worker.submit(self._analyse, book['id'])
+        return result
+
+    def _analyse(self, identity):
+        timer = None
+        process = None
+        try:
+            with self.lock:
+                if self.analysis_closed:
+                    return
+                book = self._book(identity)
+                book['analysis_status'] = 'analyzing'
+                self._save()
+            source, _ = self.source(identity)
+            command = [sys.executable, '-m', 'backend.book_analysis', 'analyse', str(source), str(ROOT / 'tools/tessdata')]
+            # PyMuPDF explicitly does not support multithreading. Only the child touches PDFs.
+            with (self.folder / identity / 'analysis.log').open('wb') as log:
+                with self.lock:
+                    if self.analysis_closed:
+                        return
+                    process = subprocess.Popen(command, cwd=str(ROOT), stdout=subprocess.PIPE, stderr=log, text=True)
+                    self.analysis_process = process
+                timer = threading.Timer(300, process.kill)
+                timer.daemon = True
+                timer.start()
+                result, error = None, ''
+                for line in process.stdout:
+                    message = json.loads(line)
+                    if 'progress' in message:
+                        with self.lock:
+                            book['analysis_progress'] = message['progress']
+                            self._save()
+                    elif 'result' in message:
+                        result = message['result']
+                    elif 'error' in message:
+                        error = message['error']
+                code = process.wait()
+            if code or result is None:
+                raise ValueError(error or 'Book analysis did not finish. Try again or choose the pages manually.')
+            with self.lock:
+                book.update(result, analysis_status='ready', analysis_error='')
+                self._save()
+        except Exception as error:
+            with self.lock:
+                book = self._book(identity)
+                book.update(analysis_status='error', analysis_error=str(error)[:400] or 'Unable to analyze this book.')
+                self._save()
+        finally:
+            if timer:
+                timer.cancel()
+            if process:
+                if process.poll() is None:
+                    process.kill()
+                process.wait()
+                process.stdout.close()
+            with self.lock:
+                self.analysis_process = None
+
+    def page_preview(self, identity, page):
+        with self.lock:
+            book = dict(self._book(identity))
+            if type(page) is not int or not 1 <= page <= book['page_count']:
+                raise ValueError('Choose a page inside this book.')
+        source, _ = self.source(book['id'])
+        folder = self.folder / book['id'] / 'previews'
+        folder.mkdir(exist_ok=True)
+        target = folder / (str(page) + '.png')
+        if target.is_file():
+            return target.read_bytes()
+        try:
+            result = subprocess.run([sys.executable, '-m', 'backend.book_analysis', 'preview', str(source), str(page)],
+                                    cwd=str(ROOT), capture_output=True, timeout=20)
+        except subprocess.TimeoutExpired:
+            raise ValueError('Page preview took too long. Download the original PDF to inspect it.') from None
+        if result.returncode or not result.stdout.startswith(b'\x89PNG\r\n\x1a\n'):
+            raise ValueError('This page could not be previewed. Download the original PDF to inspect it.')
+        # Cache only a few rendered pages per book, never an entire 500-page volume.
+        with self.lock:
+            for old in sorted(folder.glob('*.png'), key=lambda path: path.stat().st_mtime)[:-11]:
+                old.unlink(missing_ok=True)
+            temporary = folder / (str(page) + '-' + uuid.uuid4().hex + '.tmp')
+            temporary.write_bytes(result.stdout)
+            os.replace(temporary, target)
+        return result.stdout
 
     def submit(self, data, name, pieces=None):
         if not data or len(data) > MAX_BYTES:
@@ -190,8 +303,10 @@ class SheetStore:
             self._save()
         if status == 'queued':
             self.worker.submit(self._convert, identity)
-        elif pieces:
-            self.convert_book(identity, pieces)
+        else:
+            self.analyse_book(identity)
+            if pieces:
+                self.convert_book(identity, pieces)
         return dict(item)
 
     def convert_book(self, identity, pieces):
@@ -285,6 +400,10 @@ class SheetStore:
 
     def shutdown(self):
         with self.lock:
+            self.analysis_closed = True
+            if self.analysis_process is not None:
+                self.analysis_process.terminate()
             if self.process is not None:
                 self.process.terminate()
+        self.analysis_worker.shutdown(wait=False, cancel_futures=True)
         self.worker.shutdown(wait=False, cancel_futures=True)

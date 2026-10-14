@@ -40,7 +40,7 @@ class SheetTests(unittest.TestCase):
                 for data in (b'<!DOCTYPE x><score-partwise/>',b'<!ENTITY x "a"><score-partwise/>'):
                     with self.assertRaises(ValueError):xml_score(data)
             finally:
-                store.shutdown();store.worker.shutdown(wait=True);library.db.close()
+                store.shutdown();store.worker.shutdown(wait=True);store.analysis_worker.shutdown(wait=True);library.db.close()
     def test_bad_repeats_keep_written_notes_and_return_warning(self):
         with tempfile.TemporaryDirectory() as directory:
             score=stream.Score();part=stream.Part();part.append(note.Note('C4'));part.append(note.Note('E4'));score.insert(0,part)

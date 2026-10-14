@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState, useId } from 'react';
 import { createRoot } from 'react-dom/client';
 import './styles.css';
 import { SortableList, SortableItem } from './SortableList.jsx';
+import SheetBookDialog, { analysisProgressText } from './SheetBookDialog.jsx';
 
 const storage = {
   get(name) { try { return localStorage.getItem(name) || ''; } catch { return ''; } },
@@ -230,6 +231,17 @@ function App() {
     return data;
   }, [key, clientId]);
   const post = useCallback((path, data) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) }), [api]);
+  const fetchSheetPreview = useCallback(async (id, page, signal) => {
+    const response = await fetch(`/api/sheets/preview?id=${encodeURIComponent(id)}&page=${page}`, { signal, headers: { Authorization: `Bearer ${key}`, 'X-Piano-Client': clientId } });
+    if (!response.ok) {
+      let detail;
+      try { detail = await response.json(); } catch {}
+      throw Error(detail?.error || 'The page preview could not load.');
+    }
+    if (!response.headers.get('Content-Type')?.startsWith('image/png')) throw Error('The preview was not an image.');
+    return response.blob();
+  }, [key, clientId]);
+
 
   useEffect(() => {
     if (status?.playback_error || status?.queue?.error) announce(status.playback_error || status.queue.error);
@@ -450,7 +462,7 @@ function App() {
       await refreshSheets();
       return { saved, failures };
     });
-    if (result) announce(`Uploaded ${result.saved} ${result.saved === 1 ? 'file' : 'files'}.${result.failures.length ? ` ${result.failures.join('; ')}` : ' PDFs are ready to split into songs; images and MusicXML convert as one song.'}`, !result.failures.length);
+    if (result) announce(`Uploaded ${result.saved} ${result.saved === 1 ? 'file' : 'files'}.${result.failures.length ? ` ${result.failures.join('; ')}` : ' Browse your PDF to review suggested songs; images and MusicXML convert as one song.'}`, !result.failures.length);
     input.value = '';
   }
 
@@ -649,12 +661,12 @@ function App() {
       </section>}
 
       {view === 'sheets' && <section className="sheet-import" aria-label="Sheet music files">
-        <div className="sheet-explainer"><span className="mini-art"><Icon name="book" /></span><div><h2>A page, a piece, or a whole book</h2><p>Upload a PDF, a clear photo, or a MusicXML score. For a book, name each song and choose its page range. Keep every page of one piece together.</p><p className="section-note">Recognition can miss notes, rhythm, or repeats. Check the converted song before playing; nothing is added to your queue automatically.</p></div></div>
+        <div className="sheet-explainer"><span className="mini-art"><Icon name="book" /></span><div><h2>A page, a piece, or a whole book</h2><p>Upload a PDF, a clear photo, or a MusicXML score. Browse a book to find suggested songs and preview their pages. Choose what to add, and adjust names or pages when needed.</p><p className="section-note">Recognition can miss notes, rhythm, or repeats. Check the converted song before playing; nothing is added to your queue automatically.</p></div></div>
         {sheets.available === false && <p className="message visible" role="status">Printed-sheet recognition is not available on this Mac yet. MusicXML scores can still convert. Your uploaded originals stay saved here.</p>}
         {sheetError && <p className="message visible" role="alert">{sheetError}</p>}
         {!!sheets.items.length && <div className="sheet-files">{sheets.items.filter(item => item.warning || !item.book_id || !item.song_id || !library.songs.some(song => song.id === item.song_id)).map(item => <article className="sheet-file" key={item.id}>
-          <div className="sheet-file-info"><Icon name="book" /><div><strong>{item.name}</strong><p className="section-note">{item.page_count ? `${item.page_count} ${item.page_count === 1 ? 'page' : 'pages'} · ` : ''}{({ needs_pages: 'Choose pages for your songs', queued: 'Waiting to convert', converting: 'Reading the notes…', ready: 'Converted', error: 'Conversion needs attention' })[item.status] || item.status}{item.pages ? ` · Pages ${Array.isArray(item.pages) ? item.pages.join(', ') : item.pages}` : ''}</p>{item.error && <p className="sheet-file-error">{item.error}</p>}{item.warning && <p className="sheet-file-warning">{item.warning}</p>}</div></div>
-          <div className="sheet-file-actions"><button className="btn light small" disabled={busy} onClick={() => downloadSheet(item)}><Icon name="download" />Original</button>{item.status === 'needs_pages' && <button className="btn small" disabled={busy} onClick={() => { announce(''); openSheetSplit(item); }}>Split into songs</button>}{item.status === 'error' && <button className="btn small" disabled={busy} onClick={async () => { const result = await run(() => post('/api/sheets/retry', { id: item.id })); if (result) await refreshSheets(); }}>Try again</button>}{['queued', 'converting'].includes(item.status) && <span className="spinner" aria-label="Converting" />}</div>
+          <div className="sheet-file-info"><Icon name="book" /><div><strong>{item.name}</strong><p className="section-note">{item.page_count ? `${item.page_count} ${item.page_count === 1 ? 'page' : 'pages'} · ` : ''}{({ needs_pages: 'Choose pages for your songs', queued: 'Waiting to convert', converting: 'Reading the notes…', ready: 'Converted', error: 'Conversion needs attention' })[item.status] || item.status}{item.pages ? ` · Pages ${Array.isArray(item.pages) ? item.pages.join(', ') : item.pages}` : ''}</p>{['queued', 'analyzing'].includes(item.analysis_status) && <p className="section-note" role="status">Finding songs… {analysisProgressText(item.analysis_progress, item.page_count)}</p>}{item.error && <p className="sheet-file-error">{item.error}</p>}{item.warning && <p className="sheet-file-warning">{item.warning}</p>}</div></div>
+          <div className="sheet-file-actions"><button className="btn light small" disabled={busy} onClick={() => downloadSheet(item)}><Icon name="download" />Original</button>{item.extension === '.pdf' && !item.book_id && <><button className="btn small" disabled={busy} onClick={() => { announce(''); setDialog({ type: 'sheet_book', item }); }}>Browse songs</button><button className="btn light small" disabled={busy} onClick={() => { announce(''); openSheetSplit(item); }}>Split into songs</button></>}{item.status === 'error' && <button className="btn small" disabled={busy} onClick={async () => { const result = await run(() => post('/api/sheets/retry', { id: item.id })); if (result) await refreshSheets(); }}>Try again</button>}{['queued', 'converting'].includes(item.status) && <span className="spinner" aria-label="Converting" />}</div>
         </article>)}</div>}
       </section>}
 
@@ -676,6 +688,13 @@ function App() {
         <button key={id} className={view === id ? 'active' : ''} aria-label={label} title={label} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} /></button>
       )}
     </nav>
+
+    {dialog?.type === 'sheet_book' && <SheetBookDialog key={dialog.item.id} item={dialog.item} api={api} fetchPreview={fetchSheetPreview} available={sheets.available} onClose={() => setDialog(null)} onConvert={async pieces => {
+      await post('/api/sheets/convert', { id: dialog.item.id, pieces });
+      await refreshSheets();
+      setDialog(null);
+      announce('Your selected songs are converting. They will appear in Sheet music when ready.', true);
+    }} />}
 
     {dialog?.type === 'sheet_split' && <Dialog title="Split into songs" closeDisabled={busy} onClose={() => setDialog(null)}><form onSubmit={convertSheet}>
       <p className="dialog-hint">{dialog.item.name} · {dialog.item.page_count || 1} pages. Add one row per song, with all its pages together. Page numbers refer to PDF pages, starting at 1.</p>

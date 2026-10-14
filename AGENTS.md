@@ -21,6 +21,7 @@ Applies to this entire repository. Prefer the smallest complete fix; preserve wo
 - Volume uses CC7/CC39; do not silently reintroduce velocity scaling. Bluetooth reconnect never autoplays. Panic releases pedals/keys before stop and seek.
 - Seeking uses tempo-aware seconds and preserves playing/paused state. Validate song identity to reject stale requests.
 - Sheet music has a separate tab. Keep source files; named PDF page ranges become separate songs. Lead sheets do not contain full recorded arrangements. Surface recognition/repeat warnings.
+- PDF book discovery suggests music pages and header-based pieces before conversion. Keep previews authenticated/scoped to stored PDFs; suggestions are editable and never automatically convert or enqueue songs. PyMuPDF work must run in isolated processes, not request threads.
 - Artist/album are editable. Infer only from clear metadata/filenames or conservative cover matches; manual edits win over automatic lookup.
 - Mobile navigation floats at the bottom with accessible icon labels; dnd-kit in `web/SortableList.jsx` handles pointer/keyboard sorting, row animations, and overlays. Keep unique occurrence IDs for duplicate queue entries and reject stale drops.
 

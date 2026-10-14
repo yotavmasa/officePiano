@@ -65,6 +65,8 @@ class ApiTests(unittest.TestCase):
     def tearDown(self):
         self.client.__exit__(None, None, None)
         server.SHEETS.shutdown()
+        server.SHEETS.analysis_worker.shutdown(wait=True)
+        server.SHEETS.worker.shutdown(wait=True)
         server.QUEUE = None
         for item in reversed(self.patches):
             item.stop()
@@ -230,6 +232,39 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(result.status_code, 200)
             retry.assert_called_once_with(identity)
         self.assertEqual(self.commands, [])
+
+    def test_book_browser_authentication_and_preview_transport(self):
+        for path in ('/api/sheets/book?id=book', '/api/sheets/preview?id=book&page=1'):
+            self.assertEqual(self.client.get(path).status_code, 401)
+        self.assertEqual(self.client.post('/api/sheets/analyse', json={'id': 'book'}).status_code, 401)
+        book = {'id': 'book', 'analysis_status': 'ready', 'candidates': []}
+        with patch.object(server.SHEETS, 'book', return_value=book), patch.object(server.SHEETS, 'analyse_book', return_value=book):
+            self.assertEqual(self.client.get('/api/sheets/book?id=book', headers=self.auth).json()['book'], book)
+            self.assertEqual(self.client.post('/api/sheets/analyse', headers=self.auth, json={'id': 'book'}).json()['book'], book)
+        with patch.object(server.SHEETS, 'page_preview', return_value=b'\x89PNG\r\n\x1a\n') as render:
+            result = self.client.get('/api/sheets/preview?id=book&page=2', headers=self.auth)
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.headers['content-type'], 'image/png')
+            self.assertEqual(result.headers['cache-control'], 'no-store')
+            render.assert_called_once_with('book', 2)
+            self.assertEqual(self.client.get('/api/sheets/preview?id=book&page=nope', headers=self.auth).status_code, 400)
+        self.assertEqual(self.commands, [])
+
+    def test_slow_book_preview_does_not_block_player(self):
+        entered, release = threading.Event(), threading.Event()
+        def preview(*args):
+            entered.set()
+            if not release.wait(3):
+                raise RuntimeError('Player status was blocked by book preview')
+            return b'PNG'
+        with patch.object(server.SHEETS, 'page_preview', side_effect=preview), ThreadPoolExecutor(max_workers=1) as worker:
+            future = worker.submit(self.client.get, '/api/sheets/preview?id=book&page=1', headers=self.auth)
+            self.assertTrue(entered.wait(2))
+            try:
+                self.assertEqual(self.client.get('/api/status', headers=self.auth).status_code, 200)
+            finally:
+                release.set()
+            self.assertEqual(future.result(timeout=2).status_code, 200)
 
 
 if __name__ == '__main__':

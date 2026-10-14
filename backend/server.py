@@ -239,6 +239,11 @@ class RequestHandler:
         try:
             if request.path == '/api/sheets':
                 return self.reply(200, dict(ok=True, **SHEETS.snapshot()))
+            if request.path == '/api/sheets/book':
+                return self.reply(200, dict(ok=True, book=SHEETS.book(query.get('id', [''])[0])))
+            if request.path == '/api/sheets/preview':
+                image = SHEETS.page_preview(query.get('id', [''])[0], int(query.get('page', ['0'])[0]))
+                return self.reply(200, image, 'image/png')
             if request.path == '/api/sheets/source':
                 path, name = SHEETS.source(query.get('id', [''])[0])
                 safe_name = ''.join(c for c in name if c.isascii() and (c.isalnum() or c in ' ._-'))[:200] or 'sheet.pdf'
@@ -282,7 +287,9 @@ class RequestHandler:
                 request = json.loads(data)
                 if not isinstance(request, dict):
                     raise ValueError('Invalid request')
-                if self.path == '/api/sheets/retry':
+                if self.path == '/api/sheets/analyse':
+                    result = dict(ok=True, book=SHEETS.analyse_book(request.get('id')))
+                elif self.path == '/api/sheets/retry':
                     SHEETS.retry(request.get('id'))
                     result = dict(ok=True, **SHEETS.snapshot())
                 elif self.path == '/api/sheets/convert':
