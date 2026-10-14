@@ -4,8 +4,9 @@
 class Playback:
     MAX_QUEUE = 500
 
-    def __init__(self, library, send, load, current_song):
+    def __init__(self, library, send, load, current_song, on_empty=None):
         self.library, self.send, self.load, self.current_song = library, send, load, current_song
+        self.on_empty = on_empty or (lambda: None)
         self.song_ids, self.index = [], 0
         self.running, self.device_id, self.error = False, None, ''
         saved = library.get_setting('queue', {})
@@ -202,6 +203,8 @@ class Playback:
                 self._save()
                 if has_next:
                     self._start(self.index, self.device_id)
+                elif not self.song_ids:
+                    self.on_empty()
         except Exception as exc:
             self.running = False
             self.error = str(exc) or 'The queue could not continue. Press Play to retry.'

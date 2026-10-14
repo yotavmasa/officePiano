@@ -442,14 +442,14 @@ class Library:
                     or type(value.get('index')) is not int or not 0 <= value['index'] < max(1, len(value['song_ids']))):
                 raise ValueError('Invalid saved queue.')
         if name == 'adaptation':
-            if (not isinstance(value, dict) or value.get('mode') not in ('original', 'piano', 'smart')
+            if (not isinstance(value, dict) or value.get('mode') not in ('original', 'no_drums', 'piano', 'smart')
                     or not isinstance(value.get('songs'), dict) or len(value['songs']) > 1000):
                 raise ValueError('Invalid playback sound setting.')
             for identity, saved in value['songs'].items():
                 parts = saved if isinstance(saved, list) else saved.get('parts') if isinstance(saved, dict) else None
                 mode = 'custom' if isinstance(saved, list) else saved.get('mode') if isinstance(saved, dict) else None
                 if (not isinstance(identity, str) or not 1 <= len(identity) <= 100
-                        or mode not in ('original', 'piano', 'smart', 'custom')
+                        or mode not in ('original', 'no_drums', 'piano', 'smart', 'custom')
                         or not isinstance(parts, list) or len(parts) > 256
                         or mode == 'custom' and not parts
                         or mode != 'custom' and parts

@@ -1,5 +1,4 @@
 """Experimental, deterministic MIDI part selection; originals stay untouched."""
-import heapq
 import io
 from itertools import groupby
 from pathlib import Path
@@ -11,7 +10,7 @@ VENDOR = Path(__file__).resolve().parent.parent / 'vendor'
 if sys.prefix == sys.base_prefix and str(VENDOR) not in sys.path:
     sys.path.insert(0, str(VENDOR))
 
-LABELS = {'original': 'Original MIDI', 'piano': 'Piano tracks',
+LABELS = {'original': 'Original MIDI', 'no_drums': 'All parts except drums', 'piano': 'Piano tracks',
           'smart': 'Smart piano (experimental)', 'custom': 'Custom parts (experimental)'}
 
 
@@ -95,34 +94,82 @@ def _fold(pitch):
     return pitch
 
 
-def _limit_overlap(notes, maximum=8):
-    """Keep complete notes; prefer high/low chord edges when onset times match."""
-    held, kept = [], []
-    for start, group in groupby(sorted(notes, key=lambda note: note.start), key=lambda note: note.start):
-        while held and held[0] <= start + 1e-9:
-            heapq.heappop(held)
-        chord = sorted(group, key=lambda note: note.pitch)
-        prioritized = []
-        low, high = 0, len(chord) - 1
-        while low <= high:
-            prioritized.append(chord[high]); high -= 1
-            if low <= high:
-                prioritized.append(chord[low]); low += 1
-        for note in prioritized:
-            if len(held) < maximum:
-                kept.append(note)
-                heapq.heappush(held, note.end)
-    return sorted(kept, key=lambda note: (note.start, note.pitch))
+def _part_shift(instrument):
+    pitches = [note.pitch for note in instrument.notes]
+    if not pitches:
+        return 0
+    shifts = [shift for shift in range(-108, 109, 12) if min(pitches) + shift >= 21 and max(pitches) + shift <= 108]
+    return min(shifts, key=abs) if shifts else 0
+
+
+def _merge_overlap(notes):
+    """One physical key cannot sustain overlapping copies on separate channels."""
+    merged, count = [], 0
+    for note in sorted(notes, key=lambda note: (note.pitch, note.start, note.end)):
+        if merged and merged[-1].pitch == note.pitch and note.start < merged[-1].end - 1e-9:
+            previous = merged[-1]
+            if abs(previous.start - note.start) < 1e-9:
+                previous.velocity = max(previous.velocity, note.velocity)
+            previous.end = max(previous.end, note.end)
+            count += 1
+        else:
+            merged.append(note)
+    return sorted(merged, key=lambda note: (note.start, note.pitch)), count
+
+
+def _merge_pedals(pretty, instruments):
+    events = sorted((control.time, index, order, control.number, control.value)
+                    for index, instrument in enumerate(instruments) for order, control in enumerate(instrument.control_changes)
+                    if control.number in (64, 66, 67))
+    states, previous, output = {}, {}, []
+    for timestamp, group in groupby(events, key=lambda event: event[0]):
+        changed = set()
+        for _, index, _, number, value in group:
+            states[index, number] = value
+            changed.add(number)
+        for number in sorted(changed):
+            value = max(states.get((index, number), 0) for index in range(len(instruments)))
+            if value != previous.get(number, 0):
+                output.append(pretty.ControlChange(number, value, timestamp))
+                previous[number] = value
+    return output
 
 
 def render(data, settings):
     if not isinstance(settings, dict) or settings.get('mode') not in LABELS:
-        raise ValueError('Choose Original, Piano, Smart, or Custom adaptation.')
+        raise ValueError('Choose a playback sound option.')
     mode = settings['mode']
     if mode == 'original':
         parse_midi(data, piano_only=False)
         return data, {'mode': mode, 'label': LABELS[mode], 'selected_parts': [], 'selected_names': [],
                       'removed_notes': 0, 'shifted_notes': 0, 'notice': 'Original MIDI is unchanged.', 'original': True}
+    if mode == 'no_drums':
+        import mido
+        parse_midi(data, piano_only=False)
+        score = mido.MidiFile(file=io.BytesIO(data))
+        removed, kept = 0, 0
+        for index, track in enumerate(score.tracks):
+            output, pending = mido.MidiTrack(), 0
+            for message in track:
+                pending += message.time
+                if getattr(message, 'channel', None) == 9:
+                    removed += int(message.type == 'note_on' and message.velocity > 0)
+                    continue
+                kept += int(message.type == 'note_on' and message.velocity > 0)
+                output.append(message.copy(time=pending))
+                pending = 0
+            if pending:
+                output.append(mido.MetaMessage('end_of_track', time=pending))
+            score.tracks[index] = output
+        if not kept:
+            raise ValueError('This MIDI has no notes outside the drum channel. Choose another song or Original MIDI.')
+        buffer = io.BytesIO()
+        score.save(file=buffer)
+        rendered = buffer.getvalue()
+        metadata = parse_midi(rendered, piano_only=False)
+        return rendered, {'mode': mode, 'label': LABELS[mode], 'selected_parts': [], 'selected_names': [],
+                          'removed_notes': removed, 'shifted_notes': 0, 'duration_seconds': metadata['duration'],
+                          'notice': 'All instrument parts are preserved except the standard MIDI drum channel (10). Timing, notes, velocities, and pedals stay unchanged.', 'original': False}
     pretty, music = _read(data)
     parts = _parts(pretty, music)
     if mode == 'piano':
@@ -146,11 +193,13 @@ def render(data, settings):
     instruments = [music.instruments[int(identity)] for identity in selected]
     total_notes = sum(len(instrument.notes) for instrument in music.instruments)
     original_notes = [note for instrument in instruments for note in instrument.notes]
-    notes = [pretty.Note(velocity=note.velocity, pitch=_fold(note.pitch), start=note.start, end=note.end)
-             for note in original_notes]
+    shifts = {id(instrument): _part_shift(instrument) if mode == 'smart' else 0 for instrument in instruments}
+    notes = [pretty.Note(velocity=note.velocity, pitch=_fold(note.pitch + shifts[id(instrument)]), start=note.start, end=note.end)
+             for instrument in instruments for note in instrument.notes]
     shifted = {id(copy) for source, copy in zip(original_notes, notes) if source.pitch != copy.pitch}
-    if mode == 'smart':
-        notes = _limit_overlap(notes)
+    merged_notes = 0
+    if mode in ('smart', 'custom'):
+        notes, merged_notes = _merge_overlap(notes)
     if not notes:
         raise ValueError('The selected parts have no playable notes. Select another part.')
     shifted_notes = sum(id(note) in shifted for note in notes)
@@ -159,6 +208,8 @@ def render(data, settings):
     pedal_source = max(instruments, key=lambda instrument: len(instrument.notes))
     output.control_changes = [pretty.ControlChange(number=control.number, value=control.value, time=control.time)
                               for control in pedal_source.control_changes if control.number in (64, 66, 67)]
+    if mode in ('smart', 'custom'):
+        output.control_changes = _merge_pedals(pretty, instruments)
     # Retain the parsed score's tempo and signatures instead of building a new clock.
     music.instruments = [output]
     buffer = io.BytesIO()
@@ -169,13 +220,16 @@ def render(data, settings):
     duration = mido.MidiFile(file=io.BytesIO(rendered)).length
     selected_names = [parts[int(identity)]['name'] for identity in selected]
     removed_notes = total_notes - len(notes)
-    notice = 'Timing, note lengths, and original velocities are preserved. Pedals come from the selected part with the most notes.'
+    notice = 'Retained notes keep their timing and original velocities. Pedals come from the selected part with the most notes.'
     if mode in ('smart', 'custom'):
-        notice = 'Experimental rule-based adaptation. ' + notice
+        notice = 'Experimental rule-based adaptation. Retained attacks keep their timing and velocities. Pedals are merged across the selected parts; a pedal releases when all parts release it.'
+    if merged_notes:
+        notice += f' {merged_notes} overlapping copies of the same key were joined to prevent early note releases.'
     if mode == 'smart':
-        notice += ' Complete excess notes are omitted to keep at most eight held notes; no notes are added.'
+        notice += ' Each part uses a consistent octave shift when its full range fits the piano.'
+        notice += ' All notes in the selected parts are kept; no polyphony cap is applied.'
     if shifted_notes:
         notice += f' {shifted_notes} out-of-range notes were moved by octaves into the 88-key range.'
     return rendered, {'mode': mode, 'label': LABELS[mode], 'selected_parts': selected,
                       'selected_names': selected_names, 'removed_notes': removed_notes,
-                      'shifted_notes': shifted_notes, 'notice': notice, 'duration_seconds': duration, 'original': False}
+                      'shifted_notes': shifted_notes, 'merged_notes': merged_notes, 'notice': notice, 'duration_seconds': duration, 'original': False}

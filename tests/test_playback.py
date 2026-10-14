@@ -87,6 +87,20 @@ class QueueTests(unittest.TestCase):
         self.assertEqual(self.player.song_ids, [])
         self.assertEqual(self.library.settings['queue']['song_ids'], [])
 
+    def test_final_completion_clears_player_but_pause_and_stop_do_not(self):
+        cleared = []
+        self.player.on_empty = lambda: cleared.append(self.engine.song)
+        self.player.mutate({'action': 'replace', 'song_ids': ['A']})
+        self.player.control('play')
+        self.player.control('pause'); self.player.tick()
+        self.assertEqual(cleared, [])
+        self.player.control('play'); self.player.control('stop'); self.player.tick()
+        self.assertEqual(cleared, [])
+        self.player.control('play')
+        self.engine.playing = False
+        self.player.tick(); self.player.tick()
+        self.assertEqual(cleared, ['A'])
+
     def test_finish_removes_only_current_entry_and_keeps_saved_song(self):
         self.player.mutate({'action':'replace','song_ids':['A','B','B','C']})
         self.player.control('play',{'index':1})

@@ -83,6 +83,8 @@ def device_match(device, name):
 
 def state():
     result = midi({'action': 'status'})
+    if not SONG_ID:
+        result.update(seconds=0, duration_seconds=0, loaded=False, paused=False)
     preferred = LIBRARY.get_setting('preferred_device', '')
     result.update(name=NAME, song_id=SONG_ID, platform=sys.platform, adaptation=sound_state(), artwork=ARTWORK if SONG_ID and ARTWORK_SONG_ID == SONG_ID else {}, remote=REMOTE, online_count=online_count(), library=LIBRARY.snapshot(),
                   queue=QUEUE.snapshot() if QUEUE else {'song_ids': [], 'index': 0, 'running': False},
@@ -119,7 +121,7 @@ def schedule_artwork(song):
 
 
 def sound_config():
-    return LIBRARY.get_setting('adaptation', {'mode': 'original', 'songs': {}})
+    return LIBRARY.get_setting('adaptation', {'mode': 'no_drums', 'songs': {}})
 
 
 def sound_settings(song_id, config=None):
@@ -127,9 +129,9 @@ def sound_settings(song_id, config=None):
     saved = config.get('songs', {}).get(song_id)
     if isinstance(saved, list):  # Keep existing manual selections.
         saved = {'mode': 'custom', 'parts': saved}
-    return {'mode': saved['mode'] if saved else config.get('mode', 'original'),
+    return {'mode': saved['mode'] if saved else config.get('mode', 'no_drums'),
             'parts': saved.get('parts', []) if saved else [], 'saved_for_song': bool(saved),
-            'default_mode': config.get('mode', 'original')}
+            'default_mode': config.get('mode', 'no_drums')}
 
 
 def load_prepared(song, data, report):
@@ -145,6 +147,11 @@ def load_prepared(song, data, report):
     NAME, SONG_ID, ADAPTATION_REPORT = song['name'], song['id'], report
     schedule_artwork(song)
     return song
+
+
+def clear_finished_player():
+    global NAME, SONG_ID, ADAPTATION_REPORT, ARTWORK, ARTWORK_SONG_ID
+    NAME, SONG_ID, ADAPTATION_REPORT, ARTWORK, ARTWORK_SONG_ID = '', '', {}, {}, ''
 
 
 def load_song(song_id):
@@ -171,7 +178,7 @@ def change_sound(request):
     if not isinstance(song_id, str) or (apply_now and expected != SONG_ID):
         raise ValueError('The current song changed. Reopen Playback sound and try again.')
     mode = request.get('mode')
-    if mode not in ('original', 'piano', 'smart', 'custom'):
+    if mode not in ('original', 'no_drums', 'piano', 'smart', 'custom'):
         raise ValueError('Choose a playback sound option.')
     config = sound_config()
     config.setdefault('songs', {})
@@ -414,7 +421,7 @@ def start_services(port=52863):
     if preferred:
         midi({'action': 'connect', 'name': preferred})
     midi({'action': 'volume', 'value': int(LIBRARY.get_setting('volume', 20))})
-    QUEUE = Playback(LIBRARY, midi, load_song, lambda: SONG_ID)
+    QUEUE = Playback(LIBRARY, midi, load_song, lambda: SONG_ID, clear_finished_player)
     queue_shutdown = threading.Event()
     def advance_queue():
         while not queue_shutdown.wait(0.4):

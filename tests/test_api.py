@@ -57,7 +57,7 @@ class ApiTests(unittest.TestCase):
         }.items()]
         for item in self.patches:
             item.start()
-        server.QUEUE = Playback(library, midi, server.load_song, lambda: server.SONG_ID)
+        server.QUEUE = Playback(library, midi, server.load_song, lambda: server.SONG_ID, server.clear_finished_player)
         self.client = TestClient(server.create_app(startup=False), base_url='http://localhost', client=('127.0.0.1', 12345))
         self.client.__enter__()
         self.auth = {'Authorization': 'Bearer test-access-key'}
@@ -101,6 +101,22 @@ class ApiTests(unittest.TestCase):
         result = self.client.post('/api/upload', headers=dict(self.auth, **{'X-Library-Id': 'removed-library'}), content=fixture_midi())
         self.assertEqual(result.status_code, 400)
         self.assertEqual(server.LIBRARY.snapshot()['songs'], [])
+
+    def test_finished_empty_queue_clears_song_and_timeline(self):
+        song = self.upload()
+        server.load_song(song['id'])
+        server.QUEUE.mutate({'action': 'add', 'song_id': song['id']})
+        server.QUEUE.running, server.QUEUE.device_id = True, 12
+        with patch.object(server.QUEUE, 'send', return_value={'ok': True, 'playing': False, 'devices': [{'id': 12}]}), patch.object(server, 'ARTWORK', {'url': 'old-cover'}), patch.object(server, 'ARTWORK_SONG_ID', song['id']):
+            server.QUEUE.tick()
+            status = self.client.get('/api/status', headers=self.auth).json()
+            self.assertEqual(status['name'], '')
+            self.assertEqual(status['song_id'], '')
+            self.assertEqual(status['seconds'], 0)
+            self.assertEqual(status['duration_seconds'], 0)
+            self.assertFalse(status['loaded'])
+            self.assertEqual(status['artwork'], {})
+            self.assertEqual(status['queue']['song_ids'], [])
 
     def test_local_bootstrap_and_remote_host_do_not_leak_key(self):
         local = self.client.get('/')

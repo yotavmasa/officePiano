@@ -66,9 +66,9 @@ class SoundTests(unittest.TestCase):
     def test_custom_is_per_song_and_default_is_preserved(self):
         self.change(self.a['id'],'smart'); self.change(self.a['id'],'custom',['0'])
         self.assertEqual(server.sound_settings(self.a['id'])['mode'],'custom')
-        self.assertEqual(server.sound_settings(self.b['id'])['mode'],'original')
+        self.assertEqual(server.sound_settings(self.b['id'])['mode'],'no_drums')
         server.load_song(self.b['id'])
-        self.assertEqual(server.ADAPTATION_REPORT['mode'],'original')
+        self.assertEqual(server.ADAPTATION_REPORT['mode'],'no_drums')
         server.load_song(self.a['id'])
         self.assertEqual(server.ADAPTATION_REPORT['mode'],'custom')
     def test_each_mode_is_saved_per_song_after_reload(self):
@@ -132,7 +132,7 @@ class SoundTests(unittest.TestCase):
     def test_piano_failure_does_not_load_or_save(self):
         with self.assertRaises(ValueError):self.change(self.a['id'],'piano')
         self.assertEqual(self.calls,[]);self.assertEqual(server.SONG_ID,'')
-        self.assertEqual(server.sound_config()['mode'],'original')
+        self.assertEqual(server.sound_config()['mode'],'no_drums')
     def test_stale_dialog_and_drum_selection_rejected(self):
         with self.assertRaises(ValueError):server.change_sound({'song_id':self.a['id'],'expected_song_id':'stale','mode':'smart'})
         with self.assertRaises(ValueError):self.change(self.a['id'],'custom',['1'])

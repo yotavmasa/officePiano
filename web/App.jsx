@@ -187,7 +187,7 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [adaptationData, setAdaptationData] = useState(null);
-  const [adaptationMode, setAdaptationMode] = useState('original');
+  const [adaptationMode, setAdaptationMode] = useState('no_drums');
   const [adaptationParts, setAdaptationParts] = useState([]);
   const [adaptationLoading, setAdaptationLoading] = useState(false);
   const [adaptationError, setAdaptationError] = useState('');
@@ -590,7 +590,7 @@ function App() {
     setAdaptationLoading(true);
     setAdaptationError('');
     setAdaptationAttempted(false);
-    setAdaptationMode(status?.adaptation?.settings?.mode || 'original');
+    setAdaptationMode(status?.adaptation?.settings?.mode || 'no_drums');
     setAdaptationParts([]);
     setDialog({ type: 'adaptation', applyNow: view === 'player' });
     try {
@@ -598,7 +598,7 @@ function App() {
       if (request !== adaptationRequest.current) return;
       setAdaptationData(data);
       if (typeof data.expected_song_id === 'string') setAdaptationExpectedSongId(data.expected_song_id);
-      setAdaptationMode(data.settings?.mode || 'original');
+      setAdaptationMode(data.settings?.mode || 'no_drums');
       const eligible = (data.analysis?.parts || []).filter(part => !part.is_drum).map(part => part.id);
       const chosen = Array.isArray(data.settings?.parts) && data.settings.parts.length ? data.settings.parts : data.analysis?.recommended_parts || [];
       setAdaptationParts(chosen.filter(id => eligible.includes(id)));
@@ -636,9 +636,9 @@ function App() {
     finally { volumeDragging.current = false; refresh(); }
   }
 
-  const soundSettings = status?.adaptation?.settings || { mode: 'original' };
+  const soundSettings = status?.adaptation?.settings || { mode: 'no_drums' };
   const soundReport = status?.adaptation?.report;
-  const soundLabels = { original: 'Original MIDI', piano: 'Piano parts only', smart: 'Smart piano', custom: 'Choose parts' };
+  const soundLabels = { no_drums: 'All parts except drums', original: 'Original MIDI', piano: 'Piano parts only', smart: 'Smart piano', custom: 'Choose parts' };
   const adaptationSong = library.songs.find(song => song.id === adaptationSongId);
   const analysedParts = adaptationData?.analysis?.parts || [];
   const hasPianoParts = !!adaptationData?.analysis?.has_piano;
@@ -665,7 +665,7 @@ function App() {
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><Icon name="piano" /></span>Office Piano</div>
       <nav className="nav" aria-label="Music">
-        {[['player', 'Player', 'play', queueIds.length], ['all', 'All songs', 'grid', library.songs.filter(song => song.source_kind !== 'sheet').length], ['sheets', 'Sheet music', 'book', library.songs.filter(song => song.source_kind === 'sheet').length], ['favorites', 'Favorites', 'heart', library.songs.filter(song => song.favorite).length], ['discover', 'Discover', 'search']].map(([id, label, icon, count]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{label}{count !== undefined && <span className="count">{count}</span>}</button>)}
+        {[['player', 'Player', 'play', queueIds.length], ['all', 'All songs', 'grid', library.songs.filter(song => song.source_kind !== 'sheet').length], ['sheets', 'Sheet music', 'book', library.songs.filter(song => song.source_kind === 'sheet').length], ['favorites', 'Favorites', 'heart', library.songs.filter(song => song.favorite).length], ['discover', 'Discover', 'search']].map(([id, label, icon, count]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{label}{id === 'sheets' && <span className="nav-wip">WIP</span>}{count !== undefined && <span className="count">{count}</span>}</button>)}
       </nav>
       <div className="collections"><div className="side-heading"><span className="eyebrow">Your libraries</span><button className="icon-button" aria-label="Create library" title="Create library" onClick={() => { setLibraryName(''); setDialog({ type: 'create' }); }}><Icon name="plus" /></button></div>
         <nav className="nav library-nav" aria-label="Libraries">{library.libraries.map(item => <button key={item.id} className={view === item.id ? 'active' : ''} aria-current={view === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><Icon name="folder" /><span className="name">{item.name}</span><span className="count">{library.songs.filter(song => (song.library_ids || []).includes(item.id)).length}</span></button>)}</nav>
@@ -739,7 +739,7 @@ function App() {
     </section>}
     <nav className="mobile-dock" aria-label="Main navigation">
       {[['player', 'Player', 'play'], ['all', 'All songs', 'grid'], ['sheets', 'Sheet music', 'book'], ['favorites', 'Favorites', 'heart'], ['discover', 'Discover', 'search']].map(([id, label, icon]) =>
-        <button key={id} className={view === id ? 'active' : ''} aria-label={label} title={label} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} /></button>
+        <button key={id} className={view === id ? 'active' : ''} aria-label={label} title={label} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{id === 'sheets' && <span className="nav-wip">WIP</span>}</button>
       )}
     </nav>
 
@@ -772,9 +772,10 @@ function App() {
         <fieldset className="adaptation-modes">
           <legend className="dialog-label">Play this way</legend>
           {[
-            ['original', 'Original MIDI', 'All parts, as they are in the file.'],
+            ['no_drums', 'All parts except drums · Default', 'Play every instrument part except drums. Keep the original notes, timing, and dynamics.'],
+            ['original', 'Original MIDI', 'All parts, including drums, as they are in the file.'],
             ['piano', 'Piano parts only', 'Keep parts marked as piano; leave the other instruments out.'],
-            ['smart', 'Smart piano · Experimental', 'Use simple MIDI part rules to choose a smaller set of parts. No AI rewriting.'],
+            ['smart', 'Smart piano · Experimental', 'Choose suitable parts and merge their notes into one piano track. Experimental.'],
             ['custom', 'Choose parts', 'Pick the parts you want to hear in this song.'],
           ].map(([mode, title, detail]) => {
             const disabled = busy || mode === 'custom' && !adaptationSongId || mode === 'piano' && !!adaptationSongId && !hasPianoParts;
