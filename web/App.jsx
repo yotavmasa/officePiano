@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState, useId } from 'react';
 import { createRoot } from 'react-dom/client';
+import { flushSync } from 'react-dom';
 import './styles.css';
 import { SortableList, SortableItem } from './SortableList.jsx';
 import { groupSheetSongs } from './sheetGroups.mjs';
@@ -188,7 +189,7 @@ function ContextMenu({ x, y, label, items, onClose }) {
   function keyDown(event) {
     const entries = [...ref.current.querySelectorAll('[role="menuitem"]:not(:disabled)')];
     const index = entries.indexOf(document.activeElement);
-    if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); onClose(true); }
+    if (event.key === 'Escape' || event.key === 'Tab') { event.preventDefault(); event.stopPropagation(); event.nativeEvent.stopImmediatePropagation(); onClose(true); }
     else if (event.key === 'ArrowDown') { event.preventDefault(); entries[(index + 1) % entries.length]?.focus(); }
     else if (event.key === 'ArrowUp') { event.preventDefault(); entries[(index - 1 + entries.length) % entries.length]?.focus(); }
     else if (event.key === 'Home') { event.preventDefault(); entries[0]?.focus(); }
@@ -275,6 +276,7 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [selected, setSelected] = useState([]);
+  const [queueSelected, setQueueSelected] = useState([]);
   const [songMenu, setSongMenu] = useState(null);
   const menuReturn = useRef(null);
   const [adaptationData, setAdaptationData] = useState(null);
@@ -446,9 +448,12 @@ function App() {
     return () => clearInterval(interval);
   }, [view, refreshSheets]);
 
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const navigate = useCallback(next => {
-    setView(next);
-    setFilter('');
+    const apply = () => { setView(next); setFilter(''); };
+    const animate = next !== viewRef.current && document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (animate) document.startViewTransition(() => flushSync(apply)); else apply();
     const url = new URL(location.href);
     url.searchParams.set('view', next);
     history.replaceState(null, '', url.pathname + url.search);
@@ -1011,7 +1016,7 @@ function App() {
       { label: 'Delete…', icon: 'trash', danger: true, disabled: busy, onSelect: () => setDialog({ type: 'delete', songId: song.id }) },
     ];
   }
-  const menuSong = songMenu && library.songs.find(song => song.id === songMenu.songId);
+  const menuSong = songMenu && library.songs.find(song => song.id === songMenu.songId) && (songMenu.kind !== 'queue' || queueIds[songMenu.index] === songMenu.songId) ? library.songs.find(song => song.id === songMenu.songId) : null;
 
   function renderSavedSongs(songs, groupId) {
     const endSongDrag = () => { setDraggingSong(''); setQueueDrop(null); setLibraryDrop(''); };
@@ -1032,23 +1037,81 @@ function App() {
     const song = songAt(index);
     const isCurrent = !section;
     const drop = queueDrop?.row === index ? queueDrop.after ? 'drop-after' : 'drop-before' : '';
-    return <div {...rowProps} className={`queue-row ${isCurrent ? 'is-current' : ''} ${drop}`} role="listitem" data-queue-index={index} data-queue-current={isCurrent ? 'true' : undefined}>
+    const entry = queueEntryIds[index];
+    const picked = queueSelectedKeys.includes(entry);
+    return <div {...rowProps} className={`queue-row ${isCurrent ? 'is-current' : ''} ${picked ? 'is-selected' : ''} ${drop}`} role="listitem" data-queue-index={index} data-queue-current={isCurrent ? 'true' : undefined} onClick={event => queueRowClick(event, index, isCurrent)} onContextMenu={event => { event.preventDefault(); openQueueMenu(index, event.clientX, event.clientY, event.currentTarget.querySelector('.song-more')); }}>
+      <label className="song-check" title={`Select ${song.name}`}><input type="checkbox" checked={picked} aria-label={`Select queued song: ${song.name}`} onChange={() => toggleQueueSelected(entry)} /></label>
       <span className="queue-number">{isCurrent
         ? isPlaying ? <span className="equalizer" aria-hidden="true"><i /><i /><i /></span> : <Icon name={isPaused ? 'pause' : 'play'} />
         : <><button className="sort-handle" disabled={busy || section.end - section.start < 2} aria-label={`Reorder queued song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button><span className="queue-position">{String(index - section.start + 1).padStart(2, '0')}</span></>}</span>
       <div className="song-info"><div className="song-name" title={song.name}>{songTitle(song.name)}</div><div className="queue-status">{[song.artist, song.piano_only === true ? 'Piano only' : 'Other MIDI'].filter(Boolean).join(' · ')}</div></div>
       <span className="duration">{time(song.duration_seconds)}</span>
-      <div className="row-actions"><IconButton icon="play" label={`Play queued song: ${song.name}`} disabled={onDevice ? local.loading : busy || !playable} onClick={() => playQueued(index)} /><IconButton icon="close" label={`Remove from queue: ${song.name}`} disabled={busy} onClick={() => queueAction('remove', { index })} /></div>
+      <button type="button" className="song-more" aria-label={`More actions for queued song: ${song.name}`} title="More actions" aria-haspopup="menu" aria-expanded={songMenu?.kind === 'queue' && songMenu.index === index} onClick={event => { const box = event.currentTarget.getBoundingClientRect(); openQueueMenu(index, box.right - 200, box.bottom + 4, event.currentTarget); }}><Icon name="more" /></button>
     </div>;
+  };
+  const queueSelectedKeys = queueSelected.filter(entry => queueEntryIds.includes(entry));
+  const queueSelectedIndexes = queueSelectedKeys.map(entry => queueEntryIds.indexOf(entry));
+  const queueSelectedSongs = [...new Set(queueSelectedIndexes.map(index => queueIds[index]))];
+  function toggleQueueSelected(entry) {
+    setQueueSelected(previous => previous.includes(entry) ? previous.filter(item => item !== entry) : [...previous, entry]);
+  }
+  const canPlayQueued = onDevice ? !local.loading : !busy && playable;
+  function queueRowClick(event, index, isCurrent) {
+    if (event.target.closest('button, input, label, a') || songMenu) return;
+    if (event.metaKey || event.ctrlKey) return toggleQueueSelected(queueEntryIds[index]);
+    if (!canPlayQueued || isCurrent && isPlaying) return;
+    if (isCurrent && isPaused) return playerPlay();
+    playQueued(index);
+  }
+  function openQueueMenu(index, x, y, trigger) {
+    menuReturn.current = trigger;
+    setSongMenu({ kind: 'queue', index, songId: queueIds[index], x, y });
+  }
+  async function removeQueued(indexes) {
+    const ordered = [...new Set(indexes)].sort((a, b) => b - a);
+    const result = await eachSong(ordered, index => post('/api/queue', { action: 'remove', index }), ordered.length > 1 ? `Removed ${countSongs(ordered.length)} from the queue.` : '');
+    if (result) setQueueSelected([]);
+  }
+  function queueMenuItems(index) {
+    const song = songAt(index);
+    const entry = queueEntryIds[index];
+    if (queueSelectedKeys.length > 1 && queueSelectedKeys.includes(entry)) {
+      const allFavorite = queueSelectedSongs.every(id => library.songs.find(item => item.id === id)?.favorite);
+      return [
+        { label: `Remove ${countSongs(queueSelectedKeys.length)} from queue`, icon: 'close', disabled: busy, onSelect: () => removeQueued(queueSelectedIndexes) },
+        { label: allFavorite ? 'Remove from favorites' : 'Add to favorites', icon: 'heart', disabled: busy, onSelect: () => favoriteSongs(queueSelectedSongs, !allFavorite) },
+        { label: 'Add to library…', icon: 'folder', disabled: busy, onSelect: () => setDialog({ type: 'bulk_assign', songIds: queueSelectedSongs }) },
+      ];
+    }
+    return [
+      { label: index === activeIndex && isPaused ? 'Resume' : 'Play', icon: 'play', disabled: !canPlayQueued || index === activeIndex && isPlaying, onSelect: () => index === activeIndex && isPaused ? playerPlay() : playQueued(index) },
+      { label: 'Remove from queue', icon: 'close', disabled: busy, onSelect: () => queueAction('remove', { index }) },
+      { separator: true, key: 'song' },
+      { label: song.favorite ? 'Remove from favorites' : 'Add to favorites', icon: 'heart', disabled: busy, onSelect: () => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite })) },
+      { label: 'Add to library…', icon: 'folder', onSelect: () => setDialog({ type: 'assign', songId: song.id }) },
+      { label: 'Playback sound…', icon: 'piano', disabled: busy, onSelect: () => openAdaptation(song.id) },
+      { label: 'Download MIDI', icon: 'download', onSelect: () => download(song) },
+    ];
+  }
+  const queueLibraryDrag = {
+    isOutside: point => !!queueTargetAt(point)?.library,
+    onOutsideMove: point => { const target = queueTargetAt(point)?.library || ''; if (target !== libraryDrop) setLibraryDrop(target); },
+    onDropOutside: (point, entry) => {
+      const target = queueTargetAt(point)?.library;
+      setLibraryDrop('');
+      if (target) addToLibrary(queueIds[queueEntryIds.indexOf(entry)], target);
+    },
+    outsideHint: 'Drop to add it here',
   };
   const queueContent = <>
         <div className="content-heading queue-header"><div><h2>Your queue</h2><p className="section-note">{queueIds.length ? `${queueIds.length} ${queueIds.length === 1 ? 'piece' : 'pieces'} · Plays in order. Reorder to set the mood.` : 'Add songs from your music or queue a whole library.'}</p></div><div className="queue-tools"><button className="btn small" disabled={!queueIds.length || (onDevice ? local.loading : busy || !playable || playing)} onClick={() => onDevice ? playQueued(0) : queueAction('play')}><Icon name="play" />Play queue</button><button className="btn light small" disabled={busy || !queueIds.length} onClick={() => queueAction('clear')}>Clear queue</button></div></div>
+        {queueSelectedKeys.length > 0 && <div className="queue-bulk" role="toolbar" aria-label="Selected queued songs"><strong>{countSongs(queueSelectedKeys.length)} selected</strong><div className="bulk-actions"><button className="btn light small" disabled={busy} onClick={() => removeQueued(queueSelectedIndexes)}><Icon name="close" />Remove</button><button className="btn light small" disabled={busy} onClick={() => favoriteSongs(queueSelectedSongs, !queueSelectedSongs.every(id => library.songs.find(item => item.id === id)?.favorite))}><Icon name="heart" />{queueSelectedSongs.every(id => library.songs.find(item => item.id === id)?.favorite) ? 'Unfavorite' : 'Favorite'}</button><button className="btn light small" disabled={busy} onClick={() => setDialog({ type: 'bulk_assign', songIds: queueSelectedSongs })}><Icon name="folder" />Library</button><button className="btn light small" onClick={() => setQueueSelected([])}>Clear</button></div></div>}
         {!queueIds.length ? <div className="song-list" role="list" aria-label="Song queue"><EmptyState title="Your next song starts here." description="Add a few favorites or queue an entire library. Nothing starts until you press play." button="Browse your music" onClick={() => navigate('all')} /></div> : <>
           {hasCurrent && <div className="queue-section"><h3 className="queue-section-title">{nowLabel}</h3><div className="song-list queue-now" role="list" aria-label={nowLabel}>{queueRow(activeIndex)}</div></div>}
           {queueSections.map(section => {
             const entries = queueEntryIds.slice(section.start, section.end);
             return <div className="queue-section" key={section.key}><h3 className="queue-section-title">{section.title}</h3>
-              <SortableList items={entries} getLabel={entry => songTitle(songAt(queueEntryIds.indexOf(entry))?.name)} onStart={from => startReorder('queue', from + section.start)} onEnd={to => finishReorder(to + section.start)} onCancel={cancelReorder}>
+              <SortableList items={entries} getLabel={entry => songTitle(songAt(queueEntryIds.indexOf(entry))?.name)} onStart={from => startReorder('queue', from + section.start)} onEnd={to => { setLibraryDrop(''); return finishReorder(to + section.start); }} onCancel={() => { setLibraryDrop(''); cancelReorder(); }} {...queueLibraryDrag}>
                 <div className="song-list" role="list" aria-label={section.title}>{entries.map((entry, offset) => songAt(section.start + offset) && <SortableItem key={entry} id={entry} disabled={busy || entries.length < 2}>{({ rowProps, handleProps }) => queueRow(section.start + offset, section, rowProps, handleProps)}</SortableItem>)}</div>
               </SortableList></div>;
           })}
@@ -1152,7 +1215,7 @@ function App() {
           <div className="notes-panel-header"><div><h2 id="notes-heading">Falling notes</h2><p className="section-note">Notes from the original file, without drums.</p></div><button type="button" className="btn small" aria-expanded={showNotes} aria-controls="falling-notes" onClick={toggleNotes}>{showNotes ? 'Hide' : 'Show'}</button></div>
           {showNotes && <div id="falling-notes"><FallingNotes songId={playerSongId} loadSong={loadSongNotes} getTime={notesTime} playing={notesPlaying} position={playerElapsed} /></div>}
         </section>
-        {queueContent}
+        <div className="queue-block">{queueContent}</div>
       </section>}
 
       {view === 'sheets' && <section className="sheet-import" aria-label="Sheet music files">
@@ -1290,7 +1353,7 @@ function App() {
     {dialog?.type === 'delete' && <Dialog title="Remove this song?" onClose={() => setDialog(null)}><p className="dialog-hint">{assignedSong?.name}</p><p className="dialog-hint">This removes the song from All songs, favorites, libraries, and the queue. If it is playing, playback stops. The MIDI is moved to the app’s trash folder, and you can undo.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={async () => { const song = assignedSong; const result = await run(() => post('/api/library', { action: 'delete', song_id: song.id })); if (result) { setDialog(null); setNotice({ text: 'Song removed.', success: true, undoSongIds: [song.id] }); } }}>Remove song</button></div></Dialog>}
     {dialog?.type === 'bulk_delete' && <Dialog title={`Remove ${countSongs(dialog.songIds.length)}?`} onClose={() => setDialog(null)}><p className="dialog-hint">This removes them from All songs, favorites, libraries, and the queue. If one is playing, playback stops. The MIDI files are moved to the app’s trash folder, and you can undo.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={() => deleteSongs(dialog.songIds)}>Remove {countSongs(dialog.songIds.length)}</button></div></Dialog>}
     {dialog?.type === 'bulk_assign' && <Dialog title="Add to a library" onClose={() => setDialog(null)}><p className="dialog-hint">{countSongs(dialog.songIds.length)} selected</p>{library.libraries.length ? <div className="bulk-library-list">{library.libraries.map(item => <button key={item.id} type="button" className="bulk-library" disabled={busy} onClick={() => addSongsToLibrary(dialog.songIds, item)}><Icon name="folder" /><span>{item.name}</span></button>)}</div> : <p className="dialog-hint">Create a library with the + button in the sidebar first.</p>}<div className="dialog-actions"><button className="btn light" onClick={() => setDialog(null)}>Cancel</button></div></Dialog>}
-    {menuSong && <ContextMenu x={songMenu.x} y={songMenu.y} label={`Actions for ${menuSong.name}`} items={songMenuItems(menuSong)} onClose={closeSongMenu} />}
+    {menuSong && <ContextMenu x={songMenu.x} y={songMenu.y} label={`Actions for ${menuSong.name}`} items={songMenu.kind === 'queue' ? queueMenuItems(songMenu.index) : songMenuItems(menuSong)} onClose={closeSongMenu} />}
     {dialog?.type === 'remote' && <Dialog title="Music, from anywhere in the room." onClose={() => setDialog(null)}><p className="dialog-hint">Open this private link on a phone or another computer on the same office Wi-Fi. The piano computer sends the music and must stay awake.</p><a className="dialog-hint" style={{ display: 'block' }} href={status?.remote || '#'}>{status?.remote || 'Waiting for the piano connection…'}</a><div className="dialog-actions"><button className="btn" onClick={async () => {
       try { if (!status?.remote) throw Error(); await navigator.clipboard.writeText(status.remote); setCopied(true); }
       catch { announce('Select and copy the private link in the Wi-Fi dialog.'); }
