@@ -80,6 +80,26 @@ class AdaptationTests(unittest.TestCase):
         self.assertTrue(events[1].type == 'note_off' or events[1].velocity == 0)
         self.assertEqual(report['merged_notes'], 2)
 
+    def test_smart_preserves_repeated_attacks_inside_another_voice_hold(self):
+        held = (0, 0, 'Harmony', [(60, 0, 960, 50)], False)
+        melody = (1, 0, 'Melody', [(60, 240, 480, 70), (60, 600, 720, 80)], False)
+        result, report = adaptation.render(fixture([held, melody]), {'mode': 'smart'})
+        notes = parsed(result).instruments[0].notes
+        self.assertEqual(len(notes), 3)
+        self.assertAlmostEqual(notes[0].start, 0)
+        self.assertAlmostEqual(notes[-1].end, 1.5)
+        self.assertEqual([round(n.start, 3) for n in notes], [0, .25, .75])
+        self.assertTrue(all(a.end < b.start for a, b in zip(notes, notes[1:])))
+        self.assertEqual([n.velocity for n in notes], [50, 70, 80])
+
+    def test_smart_low_outlier_does_not_transpose_an_entire_part(self):
+        pitches = [12] + list(range(60, 80))
+        part = (0, 0, 'Piano', [(p, i * 480, (i + 1) * 480, 60) for i, p in enumerate(pitches)], False)
+        result, report = adaptation.render(fixture([part]), {'mode': 'smart'})
+        self.assertEqual([n.pitch for n in parsed(result).instruments[0].notes], pitches[1:])
+        self.assertEqual(report['shifted_notes'], 0)
+        self.assertEqual(report['out_of_range_notes'], 1)
+
     def test_merged_pedal_does_not_release_while_another_channel_holds_it(self):
         class Part:
             def __init__(self, controls):
