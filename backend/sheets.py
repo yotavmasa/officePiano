@@ -38,12 +38,15 @@ def audiveris_runtime(root=ROOT, system=None):
     return None
 
 
-def audiveris_command(source, destination, pages, runtime_home, root=ROOT, system=None):
+def audiveris_command(source, destination, pages, runtime_home, root=ROOT, system=None, recognition='standard'):
+    if recognition not in ('standard', 'jazz'):
+        raise ValueError('Choose standard or jazz print recognition.')
     runtime = audiveris_runtime(root, system)
     if runtime is None:
         raise ValueError('Audiveris is not installed. Run scripts/install.sh --with-sheets on the piano computer.')
     java, jars = runtime
     command = [str(java), '-Xmx2G', '-Djava.awt.headless=true', '-Duser.home=' + str(runtime_home), '--enable-native-access=ALL-UNNAMED', '--add-exports=java.desktop/sun.awt.image=ALL-UNNAMED', '-cp', str(jars / '*'), 'Audiveris', '-batch', '-transcribe', '-export', '-output', str(destination)]
+    command += ['-constant', 'org.audiveris.omr.ui.symbol.MusicFont.defaultMusicFamily=' + ('FinaleJazz' if recognition == 'jazz' else 'Bravura')]
     if pages:
         command += ['-sheets'] + [str(number) for number in pages]
     return command + ['--', str(source)]
@@ -113,6 +116,15 @@ def write_score_midi(score, destination):
         return 'Repeat markings could not be resolved. This MIDI plays the written notes once; repeats need review.'
 
 
+def recognition_warning(log):
+    messages = []
+    if 'no correct rhythm' in log:
+        messages.append('Recognition reported unresolved rhythms. Check the timing before playing.')
+    if 'No timeOffset' in log:
+        messages.append('Some notes or rests could not be placed in time and may be missing.')
+    return ' '.join(messages)
+
+
 class SheetStore:
     def __init__(self, root, library):
         self.folder = Path(root).resolve() / 'sheets'
@@ -131,6 +143,11 @@ class SheetStore:
                 item.update(status='error', error='Conversion was interrupted. Upload or select the pages again.')
             if item.get('analysis_status') in ('queued', 'analyzing'):
                 item.update(analysis_status='error', analysis_error='Book analysis was interrupted. Analyze it again.')
+            log = self.folder / item['id'] / 'conversion.log'
+            if item['status'] == 'ready' and log.is_file():
+                warning = recognition_warning(log.read_text(errors='replace'))
+                if warning and warning not in item.get('warning', ''):
+                    item['warning'] = ' '.join(filter(None, [item.get('warning'), warning]))
         self._merge_duplicate_books()
         self._save()
 
@@ -152,7 +169,7 @@ class SheetStore:
                 if child.get('book_id') == item['id']:
                     child['book_id'] = previous['id']
             if previous.get('analysis_status') != 'ready' and item.get('analysis_status') == 'ready':
-                for key in ('analysis_status', 'analysis_progress', 'analysis_error', 'analysis_warnings', 'candidates', 'music_pages', 'skipped_pages'):
+                for key in ('analysis_status', 'analysis_progress', 'analysis_error', 'analysis_warnings', 'candidates', 'music_pages', 'skipped_pages', 'recognition_hint'):
                     if key in item:
                         previous[key] = item[key]
             item['deleted_by'] = item['id']
@@ -164,7 +181,12 @@ class SheetStore:
 
     def snapshot(self):
         with self.lock:
-            return {'items': [dict(x, can_delete=not self._busy_group(x['id'])) for x in reversed(self.items) if not x.get('deleted_by')], 'available': audiveris_runtime() is not None}
+            return {'items': [dict(x, can_delete=not self._busy_group(x['id'])) for x in reversed(self.items) if not x.get('deleted_by')],
+                    'song_sources': [{'song_id': item['song_id'], 'source_id': item.get('book_id', item['id']),
+                                      'pages': item.get('pages', []), 'warning': item.get('warning', ''),
+                                      'item_id': item['id'], 'recognition': item.get('recognition', 'standard')}
+                                     for item in self.items if item.get('song_id')],
+                    'available': audiveris_runtime() is not None}
 
     def _item(self, identity, include_deleted=False):
         item = next((x for x in self.items if x['id'] == identity), None)
@@ -206,6 +228,24 @@ class SheetStore:
             item = self._item(identity)
             parent = self._item(item.get('book_id', identity))
             return self.folder / parent['id'] / ('source' + parent['extension']), parent['filename']
+
+    def recognized_score(self, song_id):
+        with self.lock:
+            item = next((item for item in self.items if item.get('song_id') == song_id), None)
+            if item is None:
+                raise ValueError('No recognized score is available for this song.')
+            _, song = self.library.select(song_id)
+            destination = self.folder / item['id']
+            if item['extension'] in ('.xml', '.musicxml', '.mxl'):
+                parent = self._item(item.get('book_id', item['id']), include_deleted=True)
+                source = self.folder / parent['id'] / ('source' + parent['extension'])
+                xml = score_bytes(source)
+            else:
+                scores = sorted(destination.rglob('*.mxl')) + sorted(destination.rglob('*.musicxml'))
+                if len(scores) != 1:
+                    raise ValueError('The recognized score is no longer available.')
+                xml = score_bytes(scores[0], generated=True)
+            return xml, Path(song['name']).stem + '.musicxml'
 
     def _book(self, identity):
         item = self._item(identity)
@@ -375,11 +415,14 @@ class SheetStore:
                 self.convert_book(identity, pieces)
         return dict(item)
 
-    def convert_book(self, identity, pieces):
+    def convert_book(self, identity, pieces, recognition=None):
         with self.lock:
             book = self._item(identity)
             if book['extension'] != '.pdf' or book.get('book_id'):
                 raise ValueError('Choose a PDF book.')
+            recognition = recognition or 'standard'
+            if recognition not in ('standard', 'jazz'):
+                raise ValueError('Choose standard or jazz print recognition.')
             if not isinstance(pieces, list) or not 1 <= len(pieces) <= 50:
                 raise ValueError('Add between 1 and 50 songs from this book.')
             validated, used = [], set()
@@ -394,7 +437,7 @@ class SheetStore:
                 validated.append((name.strip(), pages))
             children = []
             for name, pages in validated:
-                item = {'id': uuid.uuid4().hex, 'name': name, 'filename': book['filename'], 'extension': '.pdf', 'page_count': len(pages), 'pages': pages, 'book_id': identity, 'status': 'queued', 'created': time.time(), 'song_id': None, 'error': ''}
+                item = {'id': uuid.uuid4().hex, 'name': name, 'filename': book['filename'], 'extension': '.pdf', 'page_count': len(pages), 'pages': pages, 'book_id': identity, 'status': 'queued', 'created': time.time(), 'song_id': None, 'error': '', 'recognition': recognition}
                 self.items.append(item)
                 children.append(item)
             self._save()
@@ -425,7 +468,7 @@ class SheetStore:
             if item['extension'] in ('.xml', '.musicxml', '.mxl'):
                 xml = score_bytes(source)
             else:
-                command = audiveris_command(source, destination, item.get('pages'), self.folder / 'runtime')
+                command = audiveris_command(source, destination, item.get('pages'), self.folder / 'runtime', recognition=item.get('recognition', 'standard'))
                 with (destination / 'conversion.log').open('wb') as log:
                     environment = dict(os.environ, TESSDATA_PREFIX=str(ROOT / 'tools/tessdata'))
                     with self.lock:
@@ -454,6 +497,12 @@ class SheetStore:
                 part.insert(0, instrument.Piano())
             midi_path = destination / 'converted.mid'
             warning = write_score_midi(score, midi_path)
+            log = destination / 'conversion.log'
+            if log.is_file():
+                warning = ' '.join(filter(None, [warning, recognition_warning(log.read_text(errors='replace'))]))
+            from music21 import harmony
+            if list(score.recurse().getElementsByClass(harmony.ChordSymbol)):
+                warning = ' '.join(filter(None, [warning, 'This lead sheet contains chord names. MIDI follows the written notes; full accompaniment is not generated.']))
             song = self.library.add(midi_path.read_bytes(), item['name'] + '.mid', source_kind='sheet')
             with self.lock:
                 item.update(status='ready', song_id=song['id'], error='', warning=warning)

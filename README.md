@@ -48,6 +48,8 @@ Manual setup supports Python 3.9–3.13 and Node 22.12+. Linux also needs the AL
 - **Sheet music**: upload PDFs/images/MusicXML. PDF books are scanned for staff lines and song headers. Choose **Browse songs** to preview suggested pieces, edit titles/pages, and select which songs to convert; manual **Split into songs** remains available. Covers and other pages without detected music are skipped. Originals remain downloadable. Scanned pages and unclear headings may need review, and recognition can miss notes or repeats. A lead sheet provides written notes, not a complete piano recording.
 - **Discover**: search BitMidi, FreeMidi, or both. Piano-only files are marked; mixed MIDI is also playable.
 - Sheet files/books have **Delete** and **Undo**. Removing a book hides its conversion entries and keeps saved MIDI songs. Originals remain locally recoverable. Identical uploads reuse the existing file, and existing duplicate PDF books are combined without removing their songs.
+- Books have distinct cards with their converted songs, PDF pages, and recognition warnings underneath. Sorting stays within each book. Songs from removed books remain available separately.
+- **Browse songs → Printing style** selects standard or experimental jazz note-head templates. Jazz-style printing can benefit from different templates, but it is not guaranteed to improve a score. Converted songs have an editable-score download button: open that MusicXML in a notation editor, correct notes/timing/repeats, then upload the corrected MusicXML. Recognition logs with unresolved rhythms or missing note offsets are shown as warnings, including older conversions.
 - Drag the grip to reorder queue/library songs with dnd-kit. For keyboard sorting, press Space on a grip, move with the arrow keys, then press Space to drop or Escape to cancel. Library order is saved separately for each collection.
 - Original/Piano-only/Smart/manual part choices are saved with each song. Smart is an experimental deterministic reduction. MIDI dynamics, musical interpretation, and physical volume need listening checks on the piano.
 - Album artwork is matched conservatively, with piano art as fallback; Spotify opens a search for the matched or edited artist/album.
@@ -71,6 +73,7 @@ server.py   Local launcher
 .venv/bin/python -m pip install -r requirements-dev.txt
 .venv/bin/python -m unittest discover -s tests
 npm run build --prefix web
+node --test tests/sheet_groups.test.mjs
 # Mac only: native compile and optional integration check
 scripts/build_native.sh
 # Creates only a virtual MIDI destination: creates only a virtual MIDI destination

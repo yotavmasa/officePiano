@@ -250,6 +250,16 @@ class ApiTests(unittest.TestCase):
             self.assertEqual(self.client.get('/api/sheets/preview?id=book&page=nope', headers=self.auth).status_code, 400)
         self.assertEqual(self.commands, [])
 
+    def test_recognized_score_download_requires_authentication(self):
+        self.assertEqual(self.client.get('/api/sheets/score?song_id=a').status_code, 401)
+        with patch.object(server.SHEETS, 'recognized_score', return_value=(b'<score-partwise/>', 'Song.musicxml')) as export:
+            result = self.client.get('/api/sheets/score?song_id=a', headers=self.auth)
+            self.assertEqual(result.status_code, 200)
+            self.assertEqual(result.content, b'<score-partwise/>')
+            self.assertIn('application/vnd.recordare.musicxml+xml', result.headers['content-type'])
+            self.assertIn('Song.musicxml', result.headers['content-disposition'])
+            export.assert_called_once_with('a')
+
     def test_slow_book_preview_does_not_block_player(self):
         entered, release = threading.Event(), threading.Event()
         def preview(*args):

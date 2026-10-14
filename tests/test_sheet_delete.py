@@ -1,6 +1,7 @@
 """Sheet removal keeps originals and converted songs, and supports undo."""
 import io
 import sys
+import struct
 import tempfile
 import unittest
 from pathlib import Path
@@ -13,7 +14,7 @@ if sys.prefix == sys.base_prefix:
 from pypdf import PdfWriter
 
 from backend.library import Library
-from backend.sheets import SheetStore
+from backend.sheets import SheetStore, recognition_warning
 
 
 class SheetDeleteTests(unittest.TestCase):
@@ -105,6 +106,41 @@ class SheetDeleteTests(unittest.TestCase):
         with patch.object(self.store, 'analyse_book'):
             restored_upload = self.store.submit(data, 'First.pdf')
         self.assertNotEqual(restored_upload['id'], uploads[0]['id'])
+
+    def test_grouping_retains_sources_after_entry_removal(self):
+        self.store.delete('first')
+        source = next(source for source in self.store.snapshot()['song_sources'] if source['song_id'] == 'saved-midi')
+        self.assertEqual(source['source_id'], 'book')
+        self.assertNotIn('first', [item['id'] for item in self.store.snapshot()['items']])
+
+    def test_recognition_style_is_validated_and_saved(self):
+        with patch.object(self.store.worker, 'submit'):
+            children = self.store.convert_book('book', [{'name': 'Jazz piece', 'pages': '1'}], 'jazz')['items']
+        self.assertEqual(children[0]['recognition'], 'jazz')
+        with self.assertRaises(ValueError):
+            self.store.convert_book('book', [{'name': 'Bad', 'pages': '2'}], 'unknown')
+
+    def test_editable_score_stays_available_when_source_is_removed(self):
+        track = bytes.fromhex('00c00000903c4030803c0000ff2f00')
+        midi = b'MThd' + struct.pack('>IHHH', 6, 0, 1, 96) + b'MTrk' + struct.pack('>I', len(track)) + track
+        song = self.library.add(midi, 'Score.mid', source_kind='sheet')
+        item = {'id': 'xml', 'name': 'Score', 'filename': 'Score.musicxml', 'extension': '.musicxml', 'status': 'ready', 'song_id': song['id']}
+        self.store.items.append(item)
+        folder = self.store.folder / 'xml'
+        folder.mkdir()
+        xml = b'<score-partwise version="4.0"><part-list/></score-partwise>'
+        (folder / 'source.musicxml').write_bytes(xml)
+        self.assertEqual(self.store.recognized_score(song['id'])[0], xml)
+        self.store.delete('xml')
+        self.assertEqual(self.store.recognized_score(song['id']), (xml, 'Score.musicxml'))
+        with self.assertRaises(ValueError):
+            self.store.recognized_score('missing')
+
+    def test_rhythm_failures_are_reported_without_claiming_correctness(self):
+        self.assertEqual(recognition_warning('Successfully converted'), '')
+        warning = recognition_warning('MeasureStack#1 no correct rhythm\nNo timeOffset for HeadChordInter')
+        self.assertIn('unresolved rhythms', warning)
+        self.assertIn('may be missing', warning)
 
     def test_busy_book_rejects_removal_without_changes(self):
         for field, value in (('status', 'queued'), ('status', 'converting'), ('analysis_status', 'analyzing')):

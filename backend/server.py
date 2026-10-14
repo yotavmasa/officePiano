@@ -241,6 +241,10 @@ class RequestHandler:
                 return self.reply(200, dict(ok=True, **SHEETS.snapshot()))
             if request.path == '/api/sheets/book':
                 return self.reply(200, dict(ok=True, book=SHEETS.book(query.get('id', [''])[0])))
+            if request.path == '/api/sheets/score':
+                data, name = SHEETS.recognized_score(query.get('song_id', [''])[0])
+                safe_name = ''.join(c for c in name if c.isascii() and (c.isalnum() or c in ' ._-'))[:200] or 'score.musicxml'
+                return self.reply(200, data, 'application/vnd.recordare.musicxml+xml', safe_name)
             if request.path == '/api/sheets/preview':
                 image = SHEETS.page_preview(query.get('id', [''])[0], int(query.get('page', ['0'])[0]))
                 return self.reply(200, image, 'image/png')
@@ -299,7 +303,7 @@ class RequestHandler:
                     SHEETS.retry(request.get('id'))
                     result = dict(ok=True, **SHEETS.snapshot())
                 elif self.path == '/api/sheets/convert':
-                    SHEETS.convert_book(request.get('id'), request.get('pieces'))
+                    SHEETS.convert_book(request.get('id'), request.get('pieces'), request.get('recognition'))
                     result = dict(ok=True, **SHEETS.snapshot())
                 elif self.path == '/api/import':
                     midi_data, metadata = discovery.download(request.get('url'))

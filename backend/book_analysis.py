@@ -160,12 +160,14 @@ def analyse(path, progress=None, tessdata=None, cancelled=None):
     import pymupdf
     records, contents, warnings = [], [], []
     ocr_count = 0
+    jazz_font = False
     with pymupdf.open(path) as document:
         if document.needs_pass:
             raise ValueError('Password-protected PDFs are not supported.')
         if not 1 <= len(document) <= 500:
             raise ValueError('Choose a PDF with 1 to 500 pages.')
         for index, page in enumerate(document):
+            jazz_font = jazz_font or any('jazz' in str(font[3]).lower() for font in page.get_fonts())
             if cancelled and cancelled():
                 raise InterruptedError('Book analysis was interrupted.')
             text = page.get_text('text', sort=True)
@@ -222,7 +224,7 @@ def analyse(path, progress=None, tessdata=None, cancelled=None):
         candidate['id'] = hashlib.sha256(identity.encode()).hexdigest()[:16]
     if ocr_count >= 50:
         warnings.append('Heading OCR is limited to 50 scanned music pages. Review the remaining page groups.')
-    return {'candidates': candidates, 'music_pages': [record['page'] for record in records if record['music']],
+    return {'candidates': candidates, 'recognition_hint': 'jazz' if jazz_font else 'standard', 'music_pages': [record['page'] for record in records if record['music']],
             'skipped_pages': [record['page'] for record in records if not record['music']], 'analysis_warnings': warnings}
 
 

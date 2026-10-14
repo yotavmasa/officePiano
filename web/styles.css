@@ -1780,3 +1780,40 @@ h2,
   .sheet-book-dialog .dialog-actions { flex-wrap: wrap; }
   .sheet-book-dialog .dialog-actions .btn:last-child { flex: 1; }
 }
+
+.sheet-browse-toolbar { display:flex; align-items:center; justify-content:space-between; gap:16px; margin:20px 0; }
+.sheet-browse-toolbar .search { width:min(420px,100%); }
+.sheet-books { display:grid; gap:24px; margin-bottom:20px; }
+.sheet-book { border:1px solid #cbd3c4; border-radius:20px; background:#fff; overflow:hidden; box-shadow:0 5px 18px #233f3010; }
+.sheet-book-heading { display:flex; align-items:center; gap:22px; padding:24px; background:linear-gradient(120deg,#e8eddf,#f5f4ec); border-bottom:1px solid #d9dfd1; }
+.sheet-book-cover { flex:0 0 74px; height:98px; border-radius:3px 8px 8px 3px; background:#284e3e; color:#f2edce; box-shadow:inset 6px 0 #193b2e,inset 8px 0 #ffffff20,4px 4px 0 #d7d7c6; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px; }
+.sheet-book-cover svg { width:25px; height:25px; }
+.sheet-book-cover span { font-size:9px; letter-spacing:2px; text-align:center; line-height:1.6; }
+.sheet-book-heading > .sheet-file { flex:1; min-width:0; padding:0; border:0; border-radius:0; background:none; flex-wrap:wrap; }
+.sheet-book-heading .sheet-file-info > svg { display:none; }
+.sheet-book-heading .sheet-file-info strong { display:block; font-size:20px; }
+.sheet-book-kicker { display:block; text-transform:uppercase; font-size:10px; font-weight:700; letter-spacing:1.8px; color:#6b795d; margin-bottom:7px; }
+.sheet-book-songs { padding:16px 24px 12px; border-left:4px solid #cedbc4; }
+.sheet-book-song-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:10px; }
+.sheet-book-song-heading h3 { font-size:14px; margin:0; }
+.sheet-book-song-heading > span { color:var(--muted); font-size:12px; }
+.sheet-book-songs .song-list { border:0; border-radius:0; }
+.sheet-book-songs .song-row { padding-left:0; padding-right:0; }
+.sheet-book-songs .sheet-file { margin:12px 0; background:#fafaf6; }
+.sheet-book-empty { color:var(--muted); font-size:13px; padding:10px 0; }
+.sheet-song-pages { color:#647653; font-size:11px; margin:5px 0 0; }
+@media (max-width:740px) {
+  .sheet-browse-toolbar { flex-wrap:wrap; gap:10px; }
+  .sheet-browse-toolbar .search { width:100%; }
+  .sheet-book-heading { padding:18px; gap:15px; align-items:flex-start; }
+  .sheet-book-cover { flex-basis:54px; height:76px; }
+  .sheet-book-cover span { font-size:7px; }
+  .sheet-book-heading .sheet-file-info strong { font-size:17px; }
+  .sheet-book-heading .sheet-file-actions { padding-left:0; gap:6px; }
+  .sheet-book-heading .sheet-file-actions .btn { padding:9px 10px; font-size:11px; }
+  .sheet-book-songs { padding:16px 14px 10px; }
+  .sheet-book-song-heading { margin-bottom:4px; }
+}
+.sheet-recognition-choice { display:grid; grid-template-columns:auto minmax(150px,220px); gap:8px 14px; align-items:center; margin:14px 0; font-size:13px; }
+.sheet-recognition-choice small { grid-column:1 / -1; color:var(--muted); line-height:1.5; }
+@media (max-width:740px) { .sheet-recognition-choice { grid-template-columns:1fr; } }

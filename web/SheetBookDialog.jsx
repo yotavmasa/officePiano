@@ -44,6 +44,7 @@ export default function SheetBookDialog({ item, api, fetchPreview, onClose, onCo
   const [zoomed, setZoomed] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [recognition, setRecognition] = useState('standard');
   const [retrying, setRetrying] = useState(false);
   const active = pieces.find(piece => piece.id === activeId);
   const activePages = active ? piecePages(active.pageText, book?.page_count || item.page_count) || active.pages : [];
@@ -80,6 +81,7 @@ export default function SheetBookDialog({ item, api, fetchPreview, onClose, onCo
         setError('');
         if (data.book.analysis_status === 'ready' && !initialized.current) {
           initialized.current = true;
+          setRecognition('standard');
           const candidates = (data.book.candidates || []).map(piece => ({ ...piece, pageText: pageRangeText(piece.pages), name: piece.title || 'Untitled piece' }));
           setPieces(candidates);
           setActiveId(candidates[0]?.id || '');
@@ -143,7 +145,7 @@ export default function SheetBookDialog({ item, api, fetchPreview, onClose, onCo
     }
     if (!chosen.length || chosen.length > 50) { setError('Choose between 1 and 50 songs.'); return; }
     setSaving(true);
-    try { await onConvert(chosen.map(piece => ({ name: piece.name.trim(), pages: piece.pageText }))); }
+    try { await onConvert(chosen.map(piece => ({ name: piece.name.trim(), pages: piece.pageText })), recognition); }
     catch (failure) { setError(failure.message); setSaving(false); }
   }
 
@@ -157,6 +159,7 @@ export default function SheetBookDialog({ item, api, fetchPreview, onClose, onCo
     {working && <p className="sheet-analysis-progress" role="status"><span className="spinner" />Finding songs… {analysisProgressText(book.analysis_progress, book.page_count)}</p>}
     {!book && !error && <p className="dialog-hint" role="status">Opening the book…</p>}
     {book?.analysis_status === 'error' && <div className="message visible" role="alert"><p>{book.analysis_error || 'Could not find the songs. Try again, or use manual page selection.'}</p><button className="btn light small" disabled={retrying} onClick={retry}>Try finding songs again</button></div>}
+    {book?.analysis_status === 'ready' && <label className="sheet-recognition-choice"><span>Printing style</span><select className="field" aria-label="Sheet printing style" value={recognition} disabled={saving} onChange={event => setRecognition(event.target.value)}><option value="standard">Standard print</option><option value="jazz">Jazz-style print (experimental)</option></select><small>Matches the note shapes during recognition. Jazz style is an alternative for printed jazz notation; it does not guarantee better recognition.</small></label>}
     {book?.analysis_status === 'ready' && <>
       <p className="section-note">{pieces.length} suggested {pieces.length === 1 ? 'song' : 'songs'} · {(book.music_pages || []).length} music pages · {Math.max(0, book.page_count - (book.music_pages || []).length)} pages skipped</p>
       {(book.analysis_warnings || []).map((warning, index) => <p key={index} className="message visible" role="status">{warning}</p>)}
