@@ -1528,57 +1528,6 @@ h2,
   background-size: 16px 16px;
 }
 
-.adaptation-card {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-  margin: -9px 0 29px;
-  padding: 16px 19px;
-  text-align: left;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: #fff;
-}
-.adaptation-card:hover {
-  background: #f2f5ec;
-}
-.adaptation-card-icon {
-  display: grid;
-  place-items: center;
-  flex-shrink: 0;
-  width: 36px;
-  height: 40px;
-  border-radius: 8px;
-  background: #edf2e6;
-  color: #718866;
-}
-.adaptation-card-content {
-  display: flex;
-  flex-direction: column;
-  flex: 1;
-  min-width: 0;
-  gap: 5px;
-}
-.adaptation-card-title {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-}
-.adaptation-card-label {
-  font-size: 12px;
-  color: #7a8b70;
-  overflow-wrap: anywhere;
-}
-.adaptation-card-note {
-  font-size: 11px;
-  line-height: 1.6;
-  color: var(--muted);
-  overflow-wrap: anywhere;
-}
 .experimental-badge {
   padding: 3px 6px;
   border-radius: 5px;
@@ -1648,12 +1597,6 @@ h2,
   margin-top: 18px;
   font-size: 11px;
   color: #887153;
-}
-@media (max-width: 740px) {
-  .adaptation-card {
-    padding: 14px;
-    gap: 11px;
-  }
 }
 
 .song-name-button {
@@ -1904,3 +1847,11 @@ h2,
 .falling-notes canvas { display: block; width: 100%; height: 100%; }
 .falling-notes-message { position: absolute; inset: 0 0 22%; margin: 0; display: grid; place-items: center; padding: 16px; color: #d8e4bc; font-size: 13px; text-align: center; }
 @media (max-width: 740px) { .notes-panel { padding: 14px; } .falling-notes { height: 220px; } }
+
+.sound-button { display: flex; align-items: center; gap: 7px; min-width: 0; max-width: 220px; height: 34px; padding: 0 11px; border-radius: 8px; background: #ffffff12; color: inherit; font-size: 12px; white-space: nowrap; }
+.sound-button:hover:not(:disabled) { background: #ffffff22; }
+.sound-button svg { width: 16px; height: 16px; flex-shrink: 0; }
+.sound-button-label { overflow: hidden; text-overflow: ellipsis; }
+.sound-button .experimental-badge { padding: 2px 5px; font-size: 10px; }
+.adaptation-report { margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; background: #f2f5ec; font-size: 12px; line-height: 1.55; color: var(--muted); overflow-wrap: anywhere; }
+@media (max-width: 740px) { .sound-button { flex-shrink: 0; padding: 0 9px; } .sound-button-label { display: none; } }
