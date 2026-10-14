@@ -1891,7 +1891,7 @@ h2,
 .queue-now .equalizer { height: 14px; }
 
 /* Compact single-line queue rows on the Player page and in the side panel */
-.queue-section .queue-row { grid-template-columns: 26px minmax(0, 1fr) auto auto; gap: 10px; padding: 7px 12px; }
+.queue-section .queue-row { grid-template-columns: 26px minmax(0, 1fr) auto 28px; gap: 10px; padding: 7px 12px; }
 .queue-section .queue-row > .duration { display: block; font-size: 11px; }
 .queue-section .queue-number { flex-direction: row; gap: 2px; font-size: 11px; }
 .queue-section .queue-row .song-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -1964,3 +1964,38 @@ h2,
 .queue-docked .bulk-bar { right: 344px; }
 .has-bulk-bar .main { padding-bottom: 200px; }
 @media (max-width: 740px) { .has-bulk-bar .main { padding-bottom: calc(300px + env(safe-area-inset-bottom, 0px)); } }
+
+/* Queue rows: click to play, right-click or ⋯ for actions, checkbox to select */
+.queue-section .queue-row { cursor: pointer; }
+.queue-section .queue-row:hover { background: #f7f9f3; }
+.queue-section .queue-row.is-selected, .queue-now .queue-row.is-selected { background: #e9f0df; }
+.queue-section .song-more { width: 28px; height: 28px; }
+.queue-section .queue-row:hover .song-more { opacity: 1; }
+.queue-bulk { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 8px; margin: 0 0 14px; padding: 8px 10px; border-radius: 10px; background: var(--forest); color: #f2f5e9; animation: rise-in 160ms ease-out; }
+.queue-bulk strong { font-size: 12px; }
+.queue-bulk .bulk-actions .btn { padding: 6px 9px; font-size: 11px; }
+
+/* Entrance animations */
+@keyframes rise-in { from { opacity: 0; transform: translateY(8px); } }
+@keyframes pop-in { from { opacity: 0; transform: scale(.96); } }
+.context-menu { animation: pop-in 120ms ease-out; transform-origin: top left; }
+.bulk-bar { animation: rise-in 180ms ease-out; }
+
+/* Page changes: the full player morphs into the mini player (View Transitions) */
+.player { view-transition-name: now-playing; }
+.mini-player { view-transition-name: now-playing; }
+.player .art, .mini-player-art { view-transition-name: now-playing-art; }
+.player .song-title, .mini-player-title strong { view-transition-name: now-playing-title; }
+.queue-block, .queue-docked .queue-panel { view-transition-name: queue; }
+::view-transition-group(*) { animation-duration: 340ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 200ms; }
+::view-transition-group(now-playing) { background: #243e35; border-radius: 18px; overflow: clip; }
+::view-transition-old(now-playing) { animation: vt-fade-out 120ms ease-out both; }
+::view-transition-new(now-playing) { animation: vt-fade-in 200ms 140ms ease-out both; }
+@keyframes vt-fade-out { to { opacity: 0; } }
+@keyframes vt-fade-in { from { opacity: 0; } }
+::view-transition-old(now-playing-title), ::view-transition-new(now-playing-title) { height: 100%; object-fit: contain; object-position: left center; }
+@media (prefers-reduced-motion: reduce) {
+  ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
+  .context-menu, .bulk-bar, .queue-bulk { animation: none; }
+}
