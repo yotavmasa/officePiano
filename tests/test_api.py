@@ -77,6 +77,31 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(result.status_code, 200, result.text)
         return result.json()['song']
 
+    def test_upload_into_library_preserves_player_and_queue(self):
+        created = self.client.post('/api/library', headers=self.auth, json={'action': 'create', 'name': 'Upload destination'})
+        self.assertEqual(created.status_code, 200, created.text)
+        destination = created.json()['library']['libraries'][0]['id']
+        existing = self.upload()
+        self.client.post('/api/queue', headers=self.auth, json={'action': 'add', 'song_id': existing['id']})
+        before = self.client.get('/api/status', headers=self.auth).json()
+        saved_ids = []
+        for pitch in (62, 64):
+            midi = fixture_midi().replace(bytes.fromhex('903c40'), bytes([0x90, pitch, 64])).replace(bytes.fromhex('803c00'), bytes([0x80, pitch, 0]))
+            result = self.client.post('/api/upload', headers=dict(self.auth, **{'X-Filename': f'Upload-{pitch}.mid', 'X-Library-Id': destination}), content=midi)
+            self.assertEqual(result.status_code, 200, result.text)
+            saved_ids.append(result.json()['song']['id'])
+        snapshot = result.json()['library']
+        self.assertEqual(snapshot['libraries'][0]['song_ids'], saved_ids)
+        after = self.client.get('/api/status', headers=self.auth).json()
+        self.assertEqual(after['queue'], before['queue'])
+        self.assertEqual(after['song_id'], before['song_id'])
+        self.assertEqual(after['playing'], before['playing'])
+
+    def test_missing_upload_library_does_not_save_file(self):
+        result = self.client.post('/api/upload', headers=dict(self.auth, **{'X-Library-Id': 'removed-library'}), content=fixture_midi())
+        self.assertEqual(result.status_code, 400)
+        self.assertEqual(server.LIBRARY.snapshot()['songs'], [])
+
     def test_local_bootstrap_and_remote_host_do_not_leak_key(self):
         local = self.client.get('/')
         self.assertEqual(local.status_code, 200)

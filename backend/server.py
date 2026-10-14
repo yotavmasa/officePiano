@@ -164,8 +164,11 @@ def sound_state(song_id=None, analyse=False):
 
 def change_sound(request):
     song_id = request.get('song_id', '')
+    apply_now = request.get('apply_now', True)
     expected = request.get('expected_song_id', song_id)
-    if not isinstance(song_id, str) or expected != SONG_ID:
+    if type(apply_now) is not bool:
+        raise ValueError('Choose whether to apply playback settings now.')
+    if not isinstance(song_id, str) or (apply_now and expected != SONG_ID):
         raise ValueError('The current song changed. Reopen Playback sound and try again.')
     mode = request.get('mode')
     if mode not in ('original', 'piano', 'smart', 'custom'):
@@ -186,7 +189,8 @@ def change_sound(request):
     if song_id:
         original, song = LIBRARY.playable(song_id)
         prepared, report = adaptation.render(original, sound_settings(song_id, config))
-        load_prepared(song, prepared, report)
+        if apply_now:
+            load_prepared(song, prepared, report)
     LIBRARY.set_setting('adaptation', config)
     return sound_state()
 
@@ -284,8 +288,13 @@ class RequestHandler:
                 result = dict(ok=True, item=item, **SHEETS.snapshot())
             elif self.path == '/api/upload':
                 name = urllib.parse.unquote(self.headers.get('x-filename', 'Uploaded MIDI'))[:200]
+                library_id = self.headers.get('x-library-id', '')
                 with LOCK:
+                    if library_id and not any(item['id'] == library_id for item in LIBRARY.snapshot()['libraries']):
+                        raise ValueError('This library no longer exists. Choose another library before uploading.')
                     song = LIBRARY.add(data, name)
+                    if library_id:
+                        LIBRARY.mutate({'action': 'assign', 'song_id': song['id'], 'library_id': library_id, 'value': True})
                     result = dict(ok=True, song=song, library=LIBRARY.snapshot())
             else:
                 request = json.loads(data)

@@ -44,6 +44,8 @@ Manual setup supports Python 3.9–3.13 and Node 22.12+. Linux also needs the AL
 ## Use
 
 - **Player**: queue, volume, tempo-aware timeline seeking, and playback sound settings. Songs leave the queue when they finish; saved originals remain in the library.
+- A compact player stays visible on other pages, above the mobile menu. Tap its song to open Player, or use its play/pause, next, and timeline controls.
+- Each library has **Upload MIDI** for multiple files; uploads go directly into that library without entering the queue. Saving playback sound from a song list only saves that song's settings for its next playback; it does not load the song or interrupt the current player.
 - **All songs**: upload multiple MIDI files, search, edit names/artists/albums, favorites, and saved collections.
 - **Sheet music**: upload PDFs/images/MusicXML. PDF books are scanned for staff lines and song headers. Choose **Browse songs** to preview suggested pieces, edit titles/pages, and select which songs to convert; manual **Split into songs** remains available. Covers and other pages without detected music are skipped. Originals remain downloadable. Scanned pages and unclear headings may need review, and recognition can miss notes or repeats. A lead sheet provides written notes, not a complete piano recording.
 - **Discover**: search BitMidi, FreeMidi, Bushgrafts (jazz piano), Kunst der Fuge (classical), or all sites. Source descriptions help choose a catalog. Classical files are checked when saved to avoid consuming download allowances during search; site download limits still apply. Piano-only files are marked; mixed MIDI is also playable.

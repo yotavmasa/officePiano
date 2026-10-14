@@ -14,6 +14,8 @@ Applies to this entire repository. Prefer the smallest complete fix; preserve wo
 ## Behavior to preserve
 - Player is the first page/navigation item; startup waits for a song and never autoplays.
 - Uploads save originals without starting music, replacing the current song, or adding queue entries.
+- Uploads from a library use `X-Library-Id`; validate the destination before saving and assign every uploaded song there. All songs uploads remain unassigned.
+- Keep the mini player on other pages, above the mobile dock, using the same playback/seek actions as the full player. Library song settings use `apply_now: false`: validate and save without MIDI commands, changing the current song, or navigating to Player. Full Player settings retain explicit apply-and-stop behavior and stale-song protection.
 - Finished songs leave the queue and the next plays. Pause/Stop/disconnect retain queued songs. Reordering preserves the current item, including duplicate IDs.
 - Queue and library order persist; filtered dragging preserves hidden songs. Collection order is independent of global order.
 - Mixed-instrument MIDI is allowed and marked. Preserve originals; adaptation produces a temporary playback copy.

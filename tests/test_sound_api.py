@@ -34,6 +34,26 @@ class SoundTests(unittest.TestCase):
         self.library.db.close();self.temp.cleanup()
     def change(self,song,mode,parts=None):
         return server.change_sound({'song_id':song,'expected_song_id':server.SONG_ID,'mode':mode,'parts':parts or []})
+    def test_save_only_keeps_current_song_and_does_not_send_midi(self):
+        server.load_song(self.b['id'])
+        report = dict(server.ADAPTATION_REPORT)
+        self.calls.clear()
+        result = server.change_sound({'song_id': self.a['id'], 'expected_song_id': 'earlier-song', 'mode': 'smart', 'apply_now': False})
+        self.assertTrue(result['ok'])
+        self.assertEqual(server.sound_settings(self.a['id'])['mode'], 'smart')
+        self.assertEqual(server.SONG_ID, self.b['id'])
+        self.assertEqual(server.ADAPTATION_REPORT, report)
+        self.assertEqual(self.calls, [])
+        server.load_song(self.a['id'])
+        self.assertEqual(server.ADAPTATION_REPORT['mode'], 'smart')
+
+    def test_save_only_current_song_does_not_reload_it(self):
+        server.load_song(self.a['id'])
+        self.calls.clear()
+        server.change_sound({'song_id': self.a['id'], 'mode': 'custom', 'parts': ['0'], 'apply_now': False})
+        self.assertEqual(self.calls, [])
+        self.assertEqual(server.sound_settings(self.a['id'])['mode'], 'custom')
+
     def test_choose_smart_saved_song_without_starting_music(self):
         original=self.library.select(self.a['id'])[0]
         result=self.change(self.a['id'],'smart')

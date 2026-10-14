@@ -424,6 +424,7 @@ function App() {
   async function upload(event) {
     const input = event.target;
     const files = Array.from(input.files || []);
+    const destination = selectedLibrary;
     if (!files.length) return;
     const result = await run(async () => {
       const failures = [];
@@ -435,7 +436,7 @@ function App() {
           if (file.size > 8388608) throw Error('File is larger than 8 MB.');
           const data = await api('/api/upload', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': encodeURIComponent(file.name) },
+            headers: { 'Content-Type': 'application/octet-stream', 'X-Filename': encodeURIComponent(file.name), ...(destination ? { 'X-Library-Id': destination.id } : {}) },
             body: file,
           });
           acceptLibrary(data.library);
@@ -448,7 +449,7 @@ function App() {
       return { ok: true, saved, failures, warnings };
     });
     if (result) {
-      let summary = `Saved ${result.saved} ${result.saved === 1 ? 'song' : 'songs'}.`;
+      let summary = `Saved ${result.saved} ${result.saved === 1 ? 'song' : 'songs'}${destination ? ` to ${destination.name}` : ''}.`;
       if (result.failures.length) summary += ` Could not save: ${result.failures.join('; ')}`;
       if (result.warnings.length) summary += ` ${result.warnings.join('; ')}`;
       announce(summary, !result.failures.length && !result.warnings.length);
@@ -591,7 +592,7 @@ function App() {
     setAdaptationAttempted(false);
     setAdaptationMode(status?.adaptation?.settings?.mode || 'original');
     setAdaptationParts([]);
-    setDialog({ type: 'adaptation' });
+    setDialog({ type: 'adaptation', applyNow: view === 'player' });
     try {
       const data = await api(`/api/adaptation?song_id=${encodeURIComponent(songId)}`);
       if (request !== adaptationRequest.current) return;
@@ -618,12 +619,12 @@ function App() {
     const result = await run(() => post('/api/adaptation', {
       song_id: adaptationSongId,
       expected_song_id: adaptationExpectedSongId,
+      apply_now: dialog?.applyNow === true,
       mode: adaptationMode,
       parts: adaptationMode === 'custom' ? adaptationParts : [],
-    }), 'Playback sound saved. Press Play when ready.');
+    }), dialog?.applyNow ? 'Playback sound saved. Press Play when ready.' : 'Playback settings saved to this song.');
     if (result) {
       setDialog(null);
-      navigate('player');
     }
   }
 
@@ -660,7 +661,7 @@ function App() {
   const viewTitle = view === 'sheets' ? 'Songs from sheet music' : view === 'favorites' ? 'Your favorites' : selectedLibrary?.name || 'All songs';
   const viewNote = view === 'sheets' ? 'Converted on this Mac. Review the notes before playing.' : view === 'favorites' ? 'The pieces you come back to.' : selectedLibrary ? 'A collection made for your room.' : 'Good music, always within reach.';
 
-  return <div className="shell">
+  return <div className={`shell ${view !== 'player' ? 'with-mini-player' : ''}`}>
     <aside className="sidebar">
       <div className="brand"><span className="brand-mark"><Icon name="piano" /></span>Office Piano</div>
       <nav className="nav" aria-label="Music">
@@ -673,7 +674,7 @@ function App() {
     </aside>
     <main className="main">
       <header className="topbar"><span className="breadcrumb">YOUR ROOM, SET TO MUSIC</span><div className="topbar-status"><span className={`online-count ${connectionError ? 'offline' : ''}`} title="Browsers connected to this piano app. Closed browsers disappear within 90 seconds."><span className="online-dot" />{connectionError ? 'Offline' : status ? `${status.online_count ?? 1} online` : 'Connecting…'}</span><button className={`connection ${playable ? 'connected' : ''}`} title="Piano connection settings" onClick={() => { setDialog({ type: 'connection' }); refresh(); }}><span className="dot" /><span className="label">{connectionError ? 'Piano computer unavailable' : device?.name || (wanted ? 'Waiting for your piano' : status ? 'Connect your piano' : 'Connecting to your Mac…')}</span><Icon name="arrow" /></button></div></header>
-      <div className="intro"><div><span className="eyebrow">{view === 'player' ? 'Your room, set to music' : view === 'discover' ? 'Find your next favorite' : 'Make yourself at home'}</span><h1>{view === 'player' ? 'Player' : view === 'discover' ? 'Discover' : view === 'sheets' ? 'Sheet music' : 'Your music'}</h1><p className="subtitle">{view === 'player' ? 'Choose a song or build a queue.' : view === 'discover' ? 'Search MIDI sites and save songs to your library.' : view === 'sheets' ? 'Turn printed notes into songs for your piano.' : 'Saved songs, favorites, and your libraries.'}</p></div>{view === 'all' && <button className="btn light" onClick={() => fileInput.current?.click()} disabled={busy}><Icon name="upload" />Upload MIDI</button>}{view === 'sheets' && <button className="btn light" onClick={() => sheetInput.current?.click()} disabled={busy}><Icon name="upload" />Upload sheet music</button>}<input ref={sheetInput} type="file" accept=".pdf,.png,.jpg,.jpeg,.xml,.musicxml,.mxl" multiple onChange={uploadSheets} hidden /><input ref={fileInput} type="file" accept=".mid,.midi" multiple onChange={upload} hidden /></div>
+      <div className="intro"><div><span className="eyebrow">{view === 'player' ? 'Your room, set to music' : view === 'discover' ? 'Find your next favorite' : 'Make yourself at home'}</span><h1>{view === 'player' ? 'Player' : view === 'discover' ? 'Discover' : view === 'sheets' ? 'Sheet music' : 'Your music'}</h1><p className="subtitle">{view === 'player' ? 'Choose a song or build a queue.' : view === 'discover' ? 'Search MIDI sites and save songs to your library.' : view === 'sheets' ? 'Turn printed notes into songs for your piano.' : 'Saved songs, favorites, and your libraries.'}</p></div>{(view === 'all' || selectedLibrary) && <button className="btn light" onClick={() => fileInput.current?.click()} disabled={busy} title={selectedLibrary ? `Upload MIDI to ${selectedLibrary.name}` : 'Upload MIDI to All songs'}><Icon name="upload" />Upload MIDI</button>}{view === 'sheets' && <button className="btn light" onClick={() => sheetInput.current?.click()} disabled={busy}><Icon name="upload" />Upload sheet music</button>}<input ref={sheetInput} type="file" accept=".pdf,.png,.jpg,.jpeg,.xml,.musicxml,.mxl" multiple onChange={uploadSheets} hidden /><input ref={fileInput} type="file" accept=".mid,.midi" multiple onChange={upload} hidden /></div>
       {notice && <div className={`message visible ${notice.success ? 'success' : ''}`} role={notice.success ? 'status' : 'alert'} aria-live="polite">{notice.text}{notice.undoSheetId && <button className="btn light small" style={{ marginLeft: 12 }} onClick={async () => { const result = await run(() => post('/api/sheets/restore', { id: notice.undoSheetId }), 'File restored.'); if (result) await refreshSheets(); }}>Undo</button>}{notice.undoSongId && <button className="btn light small" style={{ marginLeft: 12 }} onClick={() => run(() => post('/api/library', { action: 'restore', song_id: notice.undoSongId }), 'Song restored.')}>Undo</button>}</div>}
 
       {view === 'player' && <section aria-label="Player">
@@ -725,6 +726,17 @@ function App() {
 
       <footer className="footer"><span>Songs saved on the piano computer. Download a copy anytime.</span><button onClick={() => { setCopied(false); setDialog({ type: 'remote' }); }}><Icon name="wifi" />Control over Wi-Fi</button></footer>
     </main>
+    {view !== 'player' && <section className="mini-player" aria-label="Mini player">
+      <button className="mini-player-song" onClick={() => navigate('player')} aria-label="Open full player">
+        <span className="mini-player-art">{canLoadArtwork ? <img src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} /> : <Icon name="piano" />}</span>
+        <span className="mini-player-title"><strong>{status?.name ? songTitle(status.name) : 'Waiting for a song'}</strong><small>{current?.artist || (playing ? 'Now playing' : status?.paused ? 'Paused' : 'Open player')}</small></span>
+      </button>
+      <div className="mini-player-progress"><span>{time(elapsed)}</span><input className="song-timeline" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(duration || 1, elapsed)} aria-label="Mini player timeline" aria-valuetext={`${time(elapsed)} of ${time(duration)}`} disabled={busy || !status?.song_id || !duration} onChange={event => setSeekPreview({ songId: status.song_id, seconds: Number(event.target.value) })} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(duration)}</span></div>
+      <div className="mini-player-controls">
+        <button className="mini-player-play" aria-label={playing ? 'Pause' : status?.paused ? 'Resume' : 'Play'} disabled={busy || (!playing && (!playable || (!status?.name && !queueIds.length)))} onClick={() => playing ? control('pause') : queueAction('play', status?.song_id && queueIds[queueIndex] !== status.song_id ? { song_id: status.song_id } : {})}><Icon name={playing ? 'pause' : 'play'} /></button>
+        <button className="icon-button" aria-label="Next song" disabled={busy || !queueIds.length || queueIndex >= queueIds.length - 1} onClick={() => queueAction('next')}><Icon name="arrow" /></button>
+      </div>
+    </section>}
     <nav className="mobile-dock" aria-label="Main navigation">
       {[['player', 'Player', 'play'], ['all', 'All songs', 'grid'], ['sheets', 'Sheet music', 'book'], ['favorites', 'Favorites', 'heart'], ['discover', 'Discover', 'search']].map(([id, label, icon]) =>
         <button key={id} className={view === id ? 'active' : ''} aria-label={label} title={label} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} /></button>
@@ -783,8 +795,8 @@ function App() {
         </div>}
       </>}
       {(adaptationError || adaptationAttempted && notice && !notice.success) && <p className="message visible" role="alert">{adaptationError || notice.text}</p>}
-      <p className="dialog-hint">All playback choices are saved for this song and restored whenever it plays. With no song selected, you set the default for songs without saved settings.</p><p className="adaptation-stop-note">Applying a change stops playback. Press Play afterward.</p>
-      <div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => { adaptationRequest.current += 1; setDialog(null); }}>Cancel</button><button className="btn" disabled={busy || adaptationLoading || !adaptationData || adaptationMode === 'custom' && (!adaptationSongId || !adaptationParts.length) || adaptationMode === 'piano' && !!adaptationSongId && !hasPianoParts} onClick={applyAdaptation}>Apply sound</button></div>
+      <p className="dialog-hint">All playback choices are saved for this song and restored whenever it plays. With no song selected, you set the default for songs without saved settings.</p><p className="adaptation-stop-note">{dialog.applyNow ? 'Applying a change stops playback. Press Play afterward.' : 'Saves to this song for its next playback. The current player keeps playing.'}</p>
+      <div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => { adaptationRequest.current += 1; setDialog(null); }}>Cancel</button><button className="btn" disabled={busy || adaptationLoading || !adaptationData || adaptationMode === 'custom' && (!adaptationSongId || !adaptationParts.length) || adaptationMode === 'piano' && !!adaptationSongId && !hasPianoParts} onClick={applyAdaptation}>{dialog.applyNow ? 'Apply sound' : 'Save settings'}</button></div>
     </Dialog>}
 
     {dialog?.type === 'connection' && <Dialog title="Your piano" onClose={() => setDialog(null)}><label htmlFor="device" className="dialog-label">MIDI connection</label><select id="device" className="field" value={device ? String(device.id) : ''} onChange={event => {
