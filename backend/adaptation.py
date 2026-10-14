@@ -229,7 +229,7 @@ def render(data, settings):
         notice += ' Each part uses a consistent octave shift when its full range fits the piano.'
         notice += ' All notes in the selected parts are kept; no polyphony cap is applied.'
     if shifted_notes:
-        notice += f' {shifted_notes} out-of-range notes were moved by octaves into the 88-key range.'
+        notice += f' {shifted_notes} notes were shifted by octaves to fit the 88-key range.'
     return rendered, {'mode': mode, 'label': LABELS[mode], 'selected_parts': selected,
                       'selected_names': selected_names, 'removed_notes': removed_notes,
                       'shifted_notes': shifted_notes, 'merged_notes': merged_notes, 'notice': notice, 'duration_seconds': duration, 'original': False}

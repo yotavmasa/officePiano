@@ -67,6 +67,19 @@ class AdaptationTests(unittest.TestCase):
         self.assertEqual([n[0] for n in note_values(parsed(result))], [95, 97])
         self.assertEqual(report['shifted_notes'], 2)
 
+    def test_three_channel_overlap_keeps_first_note_on_and_last_note_off(self):
+        channels = [(0, 0, 'First', [(60, 0, 480, 50)], False),
+                    (1, 0, 'Middle', [(60, 240, 960, 70)], False),
+                    (2, 0, 'Last', [(60, 720, 1200, 80)], False)]
+        result, report = adaptation.render(fixture(channels), {'mode': 'smart'})
+        self.assertEqual(note_values(parsed(result)), [(60, 0, 2.0, 50)])
+        events = [e for t in mido.MidiFile(file=io.BytesIO(result)).tracks for e in t if e.type in ('note_on', 'note_off') and e.note == 60]
+        self.assertEqual(len(events), 2)
+        self.assertEqual(events[0].type, 'note_on')
+        self.assertEqual(events[0].velocity, 50)
+        self.assertTrue(events[1].type == 'note_off' or events[1].velocity == 0)
+        self.assertEqual(report['merged_notes'], 2)
+
     def test_merged_pedal_does_not_release_while_another_channel_holds_it(self):
         class Part:
             def __init__(self, controls):
