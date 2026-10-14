@@ -129,6 +129,28 @@ class QueueTests(unittest.TestCase):
         self.assertTrue(self.player.running)
         self.assertEqual(self.engine.song,'B')
 
+    def test_add_at_index_inserts_and_keeps_current_song(self):
+        self.player.control('play', {'index':1})
+        before=self.player.snapshot()
+        with self.assertRaises(ValueError): self.player.mutate({'action':'add','song_id':'C','index':1,'expected_song_ids':['A','B']})
+        with self.assertRaises(ValueError): self.player.mutate({'action':'add','song_id':'C','index':4})
+        with self.assertRaises(ValueError): self.player.mutate({'action':'add','song_id':'C','index':True})
+        self.assertEqual(self.player.snapshot(),before)
+        self.player.mutate({'action':'add','song_id':'C','index':2,'expected_song_ids':['A','B','C']})
+        self.assertEqual(self.player.song_ids,['A','B','C','C'])
+        self.assertEqual(self.player.index,1)
+        self.player.mutate({'action':'add','song_id':'A','index':0})
+        self.assertEqual(self.player.song_ids,['A','A','B','C','C'])
+        self.assertEqual(self.player.index,2)
+        self.assertEqual(self.player.current_song(),'B')
+        self.assertTrue(self.player.running)
+
+    def test_add_at_index_into_empty_queue(self):
+        self.player.mutate({'action':'clear'})
+        self.player.mutate({'action':'add','song_id':'B','index':0,'expected_song_ids':[]})
+        self.assertEqual(self.player.song_ids,['B'])
+        self.assertEqual(self.player.index,0)
+
     def test_unconnected_bluetooth_advertisement_is_not_playable(self):
         self.engine.devices[0]['connected']=False
         before=self.player.snapshot()
