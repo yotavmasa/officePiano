@@ -319,7 +319,7 @@ function App() {
     return cache.get(songId);
   }, [fetchSongFile]);
   const local = useLocalListener(loadSongNotes, () => advanceLocal.current?.());
-  const [showNotes, setShowNotes] = useState(() => storage.get('piano-falling-notes') !== 'off');
+  const [showNotes, setShowNotes] = useState(() => storage.get('piano-falling-notes') === 'on');
   const pianoClock = useRef({ seconds: 0, playing: false, at: 0 });
   async function listenHere(song, index = null, startAt = 0) {
     announce('');
