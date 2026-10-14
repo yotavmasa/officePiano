@@ -120,7 +120,17 @@ class Playback:
             self.library.playable(song_id)
             if len(self.song_ids) >= self.MAX_QUEUE:
                 raise ValueError('The queue can hold up to 500 songs.')
-            self.song_ids.append(song_id)
+            if 'index' not in request:
+                self.song_ids.append(song_id)
+            else:
+                if 'expected_song_ids' in request and request['expected_song_ids'] != self.song_ids:
+                    raise ValueError('The queue changed. Try adding the song again.')
+                position = request['index']
+                if type(position) is not int or not 0 <= position <= len(self.song_ids):
+                    raise ValueError('Choose a place in the queue.')
+                if self.song_ids and position <= self.index:
+                    self.index += 1
+                self.song_ids.insert(position, song_id)
             self._save()
         elif action in ('next', 'previous'):
             target = self.index + (1 if action == 'next' else -1)

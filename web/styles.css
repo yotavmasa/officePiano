@@ -1867,20 +1867,19 @@ h2,
 .queue-panel .queue-header .section-note { margin: 0; line-height: 1.5; }
 .queue-panel .queue-tools { flex-wrap: wrap; }
 .queue-panel .song-list { clear: both; }
-.queue-panel .queue-row { grid-template-columns: 26px minmax(0, 1fr) auto; gap: 4px 10px; padding: 12px; }
-.queue-panel .queue-row > .duration { display: block; font-size: 11px; }
-.queue-panel .queue-row .song-name { white-space: normal; overflow-wrap: anywhere; line-height: 1.4; }
-.queue-panel .queue-row > .row-actions { grid-column: 2 / -1; justify-content: flex-start; flex-wrap: wrap; gap: 4px; padding-top: 2px; }
-.queue-panel .queue-row .row-actions button { width: 34px; height: 32px; }
 .queue-panel .empty { padding: 28px 16px; }
 .mini-player-queue { position: relative; }
 .queue-count { position: absolute; top: 1px; right: 0; min-width: 15px; height: 15px; padding: 0 4px; border-radius: 8px; background: #d8e4bc; color: #243e35; font-size: 9px; font-weight: 700; line-height: 15px; text-align: center; }
-@media (min-width: 1280px) {
-  .shell.with-queue-panel { grid-template-columns: 238px minmax(0, 1fr) 320px; }
-  .with-queue-panel .queue-panel { display: block; position: sticky; z-index: auto; top: 0; height: 100vh; width: auto; box-shadow: none; animation: none; }
-  .with-queue-panel .queue-panel-close, .with-queue-panel .queue-backdrop, .mini-player-controls > .mini-player-queue { display: none; }
-  .with-queue-panel .mini-player { right: 344px; }
-}
+.shell.queue-docked { grid-template-columns: 238px minmax(0, 1fr) 320px; }
+.queue-docked .queue-panel { display: block; position: sticky; z-index: auto; top: 0; height: 100vh; width: auto; box-shadow: none; animation: none; }
+.queue-docked .mini-player { right: 344px; }
+.mini-player-queue.is-open { opacity: 1; background: #ffffff18; }
+.song-row[draggable="true"] { cursor: grab; }
+.song-row.is-queue-dragging { opacity: .5; }
+.queue-panel.is-drop-ready .song-list { outline: 2px dashed #b9c9a8; outline-offset: 2px; }
+.queue-panel.is-drop-target .song-list { outline-color: #4f7a3a; }
+.queue-row.drop-before { box-shadow: inset 0 3px 0 #4f7a3a; }
+.queue-row.drop-after { box-shadow: inset 0 -3px 0 #4f7a3a; }
 @media (prefers-reduced-motion: reduce) { .queue-panel.is-open { animation: none; } }
 
 .queue-section + .queue-section { margin-top: 22px; }
@@ -1890,3 +1889,13 @@ h2,
 .queue-now .queue-number { color: #4f7a3a; justify-content: center; }
 .queue-now .queue-number svg { width: 14px; height: 14px; }
 .queue-now .equalizer { height: 14px; }
+
+/* Compact single-line queue rows on the Player page and in the side panel */
+.queue-section .queue-row { grid-template-columns: 44px minmax(0, 1fr) auto auto; gap: 10px; padding: 7px 12px; }
+.queue-section .queue-row > .duration { display: block; font-size: 11px; }
+.queue-section .queue-number { flex-direction: row; gap: 2px; font-size: 11px; }
+.queue-section .queue-row .song-name { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.queue-section .queue-status { margin-top: 2px; }
+.queue-section .queue-row > .row-actions { grid-column: auto; padding: 0; flex-wrap: nowrap; justify-content: flex-end; gap: 2px; }
+.queue-section .queue-row .row-actions button { width: 28px; height: 28px; }
+.queue-section .sort-handle { width: 22px; height: 28px; }
