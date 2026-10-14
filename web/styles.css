@@ -1904,3 +1904,8 @@ h2,
 .queue-section .queue-row:hover .queue-number .sort-handle { display: grid; }
 .queue-section .queue-row:hover .queue-position { display: none; }
 @media (hover: none) { .queue-section .queue-number .sort-handle { display: grid; } .queue-section .queue-position { display: none; } }
+.song-row .mini-art .sort-handle { display: none; }
+.song-row:hover .mini-art .sort-handle { display: grid; }
+.song-row:hover .song-row-icon { display: none; }
+.song-row-icon { display: grid; place-items: center; }
+@media (hover: none) { .song-row .mini-art .sort-handle { display: grid; } .song-row-icon { display: none; } }
