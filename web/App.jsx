@@ -4,6 +4,7 @@ import './styles.css';
 import { SortableList, SortableItem } from './SortableList.jsx';
 import { groupSheetSongs } from './sheetGroups.mjs';
 import SheetBookDialog, { analysisProgressText } from './SheetBookDialog.jsx';
+import { useLocalListener } from './useLocalListener.mjs';
 
 const storage = {
   get(name) { try { return localStorage.getItem(name) || ''; } catch { return ''; } },
@@ -32,6 +33,7 @@ function initialKey() {
   return key;
 }
 
+const SEEK_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
 const time = seconds => {
   const value = Math.max(0, Math.floor(Number(seconds) || 0));
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
@@ -92,6 +94,9 @@ function Icon({ name, style }) {
     wifi: <><path d="M3 8a15 15 0 0 1 18 0M6 12a10 10 0 0 1 12 0m-9 4a5 5 0 0 1 6 0" /><circle cx="12" cy="20" r=".5" fill="currentColor" /></>,
     close: <path d="m6 6 12 12M6 18 18 6" />,
     link: <path d="m10 14 4-4m-5 1L7 13a4 4 0 0 0 6 6l2-2m0-6 2-2a4 4 0 0 0-6-6l-2 2" />,
+    devices: <><rect x="3" y="3" width="11" height="18" rx="2" /><circle cx="8.5" cy="14" r="3" /><path d="M8.5 7h.01M17 7h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3" /></>,
+    laptop: <path d="M5 5h14a1 1 0 0 1 1 1v10H4V6a1 1 0 0 1 1-1ZM2 19h20" />,
+    phone: <><rect x="7" y="3" width="10" height="18" rx="2" /><path d="M11 17h2" /></>,
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" style={style}>{paths[name] || paths.note}</svg>;
 }
@@ -111,6 +116,45 @@ function Dialog({ title, onClose, children, closeDisabled = false }) {
     <div className="dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Close dialog" disabled={closeDisabled} onClick={onClose}><Icon name="close" /></button></div>
     {children}
   </dialog>;
+}
+
+function DeviceOptions({ current, others, playing, onChoose, emptyNote }) {
+  return <>
+    <div className="device-current">
+      <span className="device-current-icon"><Icon name={current.icon} /></span>
+      <span className="device-text"><span className="device-kicker">Current device</span><strong>{playing && <span className="equalizer" aria-hidden="true"><i /><i /><i /></span>}{current.name}</strong><small>{current.detail}</small></span>
+    </div>
+    <p className="device-menu-heading">Select another device</p>
+    {others.map(item => <button type="button" key={item.id} className="device-option" onClick={() => onChoose(item)}>
+      <span className="device-option-icon"><Icon name={item.icon} /></span>
+      <span className="device-text"><strong>{item.name}</strong><small>{item.detail}</small></span>
+    </button>)}
+    {emptyNote && <p className="device-empty">{emptyNote}</p>}
+  </>;
+}
+
+function DevicePicker({ current, others, playing, onChoose, onSettings, emptyNote, local = false }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  const menuId = useId();
+  useEffect(() => {
+    if (!open) return;
+    const outside = event => { if (!ref.current?.contains(event.target)) setOpen(false); };
+    const escape = event => { if (event.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', outside);
+    document.addEventListener('keydown', escape);
+    return () => {
+      document.removeEventListener('pointerdown', outside);
+      document.removeEventListener('keydown', escape);
+    };
+  }, [open]);
+  return <div className="device-picker" ref={ref}>
+    <button type="button" className={`device-picker-button ${open ? 'is-open' : ''} ${local ? 'is-local' : ''}`} aria-haspopup="dialog" aria-expanded={open} aria-controls={menuId} aria-label={`Playing on ${current.name}. Connect to a device`} title="Connect to a device" onClick={() => setOpen(value => !value)}><Icon name="devices" /></button>
+    {open && <div className="device-menu" id={menuId} role="dialog" aria-label="Connect to a device">
+      <DeviceOptions current={current} others={others} playing={playing} emptyNote={emptyNote} onChoose={item => { setOpen(false); onChoose(item); }} />
+      <button type="button" className="device-settings" onClick={() => { setOpen(false); onSettings(); }}>Piano connection settings</button>
+    </div>}
+  </div>;
 }
 
 function EmptyState({ icon = 'note', title, description, button, onClick }) {
@@ -250,7 +294,25 @@ function App() {
     if (!response.headers.get('Content-Type')?.startsWith('image/png')) throw Error('The preview was not an image.');
     return response.blob();
   }, [key, clientId]);
-
+  const fetchSongFile = useCallback(async songId => {
+    const response = await fetch(`/api/song-file?song_id=${encodeURIComponent(songId)}`, { headers: { Authorization: `Bearer ${key}`, 'X-Piano-Client': clientId } });
+    if (!response.ok) {
+      let data;
+      try { data = await response.json(); } catch {}
+      throw Error(data?.error || 'Could not load this song.');
+    }
+    return response.arrayBuffer();
+  }, [key, clientId]);
+  const [output, setOutput] = useState(() => storage.get('piano-output') === 'device' ? 'device' : 'piano');
+  const [localIndex, setLocalIndex] = useState(null);
+  const advanceLocal = useRef(null);
+  const local = useLocalListener(fetchSongFile, () => advanceLocal.current?.());
+  async function listenHere(song, index = null, startAt = 0) {
+    announce('');
+    setLocalIndex(index);
+    try { await local.listen(song, startAt); }
+    catch (error) { announce(error.message || 'This song could not play on this device.'); }
+  }
 
   useEffect(() => {
     if (status?.playback_error || status?.queue?.error) announce(status.playback_error || status.queue.error);
@@ -363,9 +425,27 @@ function App() {
   const queueIndex = Number.isInteger(queue.index) ? queue.index : -1;
   const playing = !!status?.playing;
   const current = library.songs.find(song => song.id === status?.song_id);
-  const artworkUrl = status?.name && typeof status?.artwork?.url === 'string' ? status.artwork.url : '';
-  const spotifyArtist = current?.artist || status?.artwork?.artist;
-  const spotifyTitle = current?.album || status?.artwork?.album || status?.artwork?.title || (current?.artist || current?.album ? songTitle(current.name) : '');
+  const selectedIndex = status?.song_id ? (queueIds[queueIndex] === status.song_id ? queueIndex : queueIds.indexOf(status.song_id)) : queueIds.length ? Math.max(0, queueIndex) : -1;
+  const selectedSong = current || library.songs.find(song => song.id === queueIds[selectedIndex]);
+  const onDevice = output === 'device';
+  const deviceSong = local.song ? library.songs.find(song => song.id === local.song.id) || local.song : selectedSong;
+  const deviceIndex = local.song ? (queueIds[localIndex] === local.song.id ? localIndex : queueIds.indexOf(local.song.id)) : selectedIndex;
+  const playerSong = onDevice ? deviceSong : current;
+  const playerName = onDevice ? deviceSong?.name || '' : status?.name || '';
+  const playerSongId = onDevice ? deviceSong?.id || '' : status?.song_id || '';
+  const activeIndex = onDevice ? deviceIndex : queueIndex;
+  const isPlaying = onDevice ? local.state === 'playing' : playing;
+  const isPaused = onDevice ? local.state === 'paused' : !!status?.paused;
+  const songAt = index => library.songs.find(song => song.id === queueIds[index]);
+  advanceLocal.current = () => {
+    const next = deviceIndex + 1;
+    if (onDevice && deviceIndex >= 0 && songAt(next)) listenHere(songAt(next), next);
+  };
+  const artworkMatches = !onDevice || playerSongId === status?.song_id;
+  const artworkUrl = artworkMatches && status?.name && typeof status?.artwork?.url === 'string' ? status.artwork.url : '';
+  const playerArtwork = artworkMatches ? status?.artwork : null;
+  const spotifyArtist = playerSong?.artist || playerArtwork?.artist;
+  const spotifyTitle = playerSong?.album || playerArtwork?.album || playerArtwork?.title || (playerSong?.artist || playerSong?.album ? songTitle(playerSong.name) : '');
   const spotifyLink = spotifyTitle ? `https://open.spotify.com/search/${encodeURIComponent([spotifyArtist, spotifyTitle].filter(Boolean).join(' '))}` : null;
   const canLoadArtwork = !!artworkUrl && failedArtwork !== artworkUrl;
   const showArtwork = canLoadArtwork && loadedArtwork === artworkUrl;
@@ -376,13 +456,90 @@ function App() {
   const duration = status?.duration_seconds > 0 ? status.duration_seconds : typeof preparedDuration === 'number' && Number.isFinite(preparedDuration)
     ? Math.max(0, preparedDuration)
     : current?.duration_seconds || status?.duration_seconds || 0;
-  const elapsed = seekPreview && seekPreview.songId === status?.song_id ? seekPreview.seconds : status?.seconds || 0;
+  const playerDuration = onDevice ? local.duration || deviceSong?.duration_seconds || 0 : duration;
+  const playerElapsed = seekPreview && seekPreview.output === output && seekPreview.songId === playerSongId ? seekPreview.seconds : onDevice ? local.position : status?.seconds || 0;
+  const canSeek = onDevice ? local.state !== 'stopped' && !!playerDuration : !busy && !!status?.song_id && !!duration;
+  const canPlay = onDevice ? !local.loading && !!deviceSong : !busy && playable && !playing && (!!status?.name || !!queueIds.length);
+  const canPrevious = onDevice ? !local.loading && deviceIndex > 0 : !busy && queueIndex > 0;
+  const canNext = onDevice ? !local.loading && deviceIndex >= 0 && deviceIndex < queueIds.length - 1 : !busy && !!queueIds.length && queueIndex < queueIds.length - 1;
+  const previewSeek = seconds => setSeekPreview({ output, songId: playerSongId, seconds });
   async function seekTo(value) {
     const selected = seekPreview;
     if (!selected) return;
     setSeekPreview(null);
+    if (selected.output === 'device') {
+      if (local.song?.id === selected.songId) local.seek(Number(value));
+      return;
+    }
     await run(() => post('/api/control', { action: 'seek', seconds: Number(value), song_id: selected.songId }));
   }
+  function playerPlay() {
+    if (!onDevice) return queueAction('play', status?.song_id && queueIds[queueIndex] !== status.song_id ? { song_id: status.song_id } : {});
+    if (local.state === 'paused') return local.resume();
+    if (deviceSong) return listenHere(deviceSong, deviceIndex >= 0 ? deviceIndex : null);
+  }
+  const playerPause = () => onDevice ? local.pause() : control('pause');
+  const playerStop = () => onDevice ? local.stop() : control('stop');
+  function playerSkip(step) {
+    if (!onDevice) return queueAction(step > 0 ? 'next' : 'previous');
+    const target = deviceIndex + step;
+    if (songAt(target)) listenHere(songAt(target), target);
+  }
+  function playQueued(index) {
+    if (onDevice) return songAt(index) && listenHere(songAt(index), index);
+    return queueAction('play', { index });
+  }
+  function playSong(song) {
+    if (!onDevice) return queueAction('play', { song_id: song.id }, '', true);
+    const index = queueIds.indexOf(song.id);
+    listenHere(song, index >= 0 ? index : null);
+    navigate('player');
+  }
+  async function chooseOutput(next) {
+    if (next === output) return;
+    setOutput(next);
+    storage.set('piano-output', next);
+    setSeekPreview(null);
+    if (next === 'device') {
+      if (playing && current) {
+        listenHere(current, selectedIndex >= 0 ? selectedIndex : null, status?.seconds || 0);
+        await control('pause');
+      }
+      return;
+    }
+    const transfer = local.state === 'playing' && deviceSong ? { song: deviceSong, index: deviceIndex, at: local.position } : null;
+    local.stop();
+    if (!transfer) return;
+    if (!playable) {
+      announce('Connect your piano to continue playing there.');
+      return;
+    }
+    const started = await queueAction('play', transfer.index >= 0 ? { index: transfer.index } : { song_id: transfer.song.id });
+    if (started && transfer.at > 1) await run(() => post('/api/control', { action: 'seek', seconds: transfer.at, song_id: transfer.song.id }));
+  }
+  const thisDevice = /iPhone|Android.+Mobile/i.test(navigator.userAgent) ? { name: 'This phone', icon: 'phone' }
+    : /iPad|Android/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent) ? { name: 'This tablet', icon: 'phone' }
+    : { name: 'This computer', icon: 'laptop' };
+  const localEntry = { id: 'device', kind: 'device', name: thisDevice.name, icon: thisDevice.icon, detail: 'Speakers or headphones' };
+  const discoveredPianos = devices.map(item => ({ id: `midi:${item.id}`, kind: 'piano', name: item.name, stableName: item.stableName || item.name, icon: 'piano', detail: item.id === device?.id && !connectionError ? 'Connected' : item.connected === false ? 'Bluetooth · select to connect' : 'MIDI piano' }));
+  const pianoEntries = device ? discoveredPianos : [{ id: 'piano', kind: 'piano', icon: 'piano', name: connectionError ? 'Office piano' : wanted || 'Office piano', stableName: wanted, detail: connectionError ? 'Piano computer unavailable' : 'Not connected' }, ...discoveredPianos];
+  const currentEntry = onDevice ? localEntry : {
+    id: device ? `midi:${device.id}` : 'piano', kind: 'piano', icon: 'piano',
+    name: connectionError ? 'Office piano' : device?.name || wanted || 'Office piano',
+    detail: connectionError ? 'Piano computer unavailable' : playable ? 'Connected' : wanted ? 'Waiting for connection' : 'No piano selected',
+  };
+  const otherEntries = [...(onDevice ? [] : [localEntry]), ...pianoEntries.filter(item => item.id !== currentEntry.id)];
+  const noPianoNote = discoveredPianos.length ? '' : connectionError ? 'The piano computer is unavailable.' : 'No piano found. Turn it on, or check the piano connection settings.';
+  function chooseDevice(entry) {
+    if (entry.kind === 'device') return chooseOutput('device');
+    if (entry.stableName) {
+      setPreferred(entry.stableName);
+      storage.set('piano-device-name', entry.stableName);
+    }
+    chooseOutput('piano');
+  }
+  const openConnection = () => { setDialog({ type: 'connection' }); refresh(); };
+  const pickerProps = { current: currentEntry, others: otherEntries, playing: isPlaying, onChoose: chooseDevice, onSettings: openConnection, emptyNote: noPianoNote, local: onDevice };
   const selectedLibrary = library.libraries.find(item => item.id === view);
   const savedOrder = selectedLibrary?.song_ids || library.songs.map(song => song.id);
   const savedSongs = library.songs.filter(song => (view === 'all' && song.source_kind !== 'sheet' || view === 'sheets' && song.source_kind === 'sheet' || view === 'favorites' && song.favorite || (song.library_ids || []).includes(view)) && [song.name, song.artist, song.album].filter(Boolean).join(' ').toLowerCase().includes(filter.trim().toLowerCase())).sort((a, b) => savedOrder.indexOf(a.id) - savedOrder.indexOf(b.id));
@@ -654,7 +811,7 @@ function App() {
     return <SortableList items={songs.map(song => song.id)} getLabel={id => songTitle(library.songs.find(song => song.id === id)?.name)} onStart={from => startReorder('songs', from, groupId)} onEnd={finishReorder} onCancel={cancelReorder}>
         <div className="song-list">{!songs.length ? <EmptyState icon={filter ? 'search' : view === 'favorites' ? 'heart' : 'note'} title={filter ? 'No matching pieces' : view === 'favorites' ? 'Keep your favorites close' : 'Make room for a little music.'} description={filter ? 'Try another title.' : view === 'favorites' ? 'Tap the heart beside a saved song to keep it here.' : view === 'sheets' ? 'Upload sheet music above. Converted pieces will appear here.' : 'Upload a MIDI file, or find a new piece in Discover.'} button={filter || view === 'favorites' || view === 'sheets' ? null : 'Discover music'} onClick={() => navigate('discover')} /> : <><div className="list-labels"><span /><span>Piece</span><span className="type-label">Instrument</span><span>Time</span><span style={{ textAlign: 'right' }}>Make it yours</span></div>{songs.map((song, index) => {
           const piano = song.piano_only === true;
-          return <SortableItem key={song.id} id={song.id} disabled={busy || songs.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} className={`song-row ${status?.song_id === song.id ? 'is-current' : ''}`}><div className="mini-art"><button className="sort-handle" disabled={busy || songs.length < 2} aria-label={`Reorder song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button></div><div className="song-info"><button className="song-name song-name-button" title={`Choose playback sound for ${song.name}`} aria-label={`Choose playback sound for ${song.name}`} disabled={busy} onClick={() => openAdaptation(song.id)}>{songTitle(song.name)}</button>{(song.artist || song.album) && <div className="song-record">{[song.artist, song.album].filter(Boolean).join(' · ')}</div>}<div className="song-sub">{piano ? 'Piano only' : 'Other MIDI'} · {song.source_url ? `From ${providerName(song.source_url)}` : song.source_kind === 'sheet' ? 'From sheet music' : 'Uploaded'} · Saved locally</div>{groupId && (sheets.song_sources || []).filter(source => source.song_id === song.id && source.source_id === groupId).slice(0, 1).map(source => <div key={source.song_id}>{source.pages?.length > 0 && <p className="sheet-song-pages">PDF {source.pages.length === 1 ? 'page' : 'pages'} {source.pages.join(', ')}</p>}{source.warning && <p className="sheet-file-warning">{source.warning}</p>}</div>)}</div><span className={`piano-badge ${piano ? '' : 'candidate'}`}>{piano ? 'Piano only' : 'Other MIDI'}</span><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="heart" active={song.favorite} disabled={busy} label={`${song.favorite ? 'Remove from' : 'Add to'} favorites: ${song.name}`} onClick={() => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite }))} /><IconButton icon="folder" label={`Choose libraries for ${song.name}`} onClick={() => setDialog({ type: 'assign', songId: song.id })} /><IconButton icon="download" label={`Download MIDI: ${song.name}`} onClick={() => download(song)} />{song.source_kind === 'sheet' && <IconButton icon="book" label={`Download editable score: ${song.name}`} onClick={() => downloadRecognizedScore(song)} />}<IconButton icon="edit" label={`Edit song: ${song.name}`} disabled={busy} onClick={() => { setLibraryName(songTitle(song.name)); setSongArtist(song.artist || ''); setSongAlbum(song.album || ''); setDialog({ type: 'rename_song', songId: song.id }); }} /><IconButton icon="trash" label={`Delete song: ${song.name}`} disabled={busy} onClick={() => setDialog({ type: 'delete', songId: song.id })} /><IconButton icon="plus" label={`Add to queue: ${song.name}`} disabled={busy} onClick={() => queueAction('add', { song_id: song.id }, 'Added to the Player queue.')} /><IconButton icon="play" label={`Play ${song.name}`} disabled={busy} onClick={() => queueAction('play', { song_id: song.id }, '', true)} /></div></div>}</SortableItem>;
+          return <SortableItem key={song.id} id={song.id} disabled={busy || songs.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} className={`song-row ${playerSongId === song.id ? 'is-current' : ''}`}><div className="mini-art"><button className="sort-handle" disabled={busy || songs.length < 2} aria-label={`Reorder song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button></div><div className="song-info"><button className="song-name song-name-button" title={`Choose playback sound for ${song.name}`} aria-label={`Choose playback sound for ${song.name}`} disabled={busy} onClick={() => openAdaptation(song.id)}>{songTitle(song.name)}</button>{(song.artist || song.album) && <div className="song-record">{[song.artist, song.album].filter(Boolean).join(' · ')}</div>}<div className="song-sub">{piano ? 'Piano only' : 'Other MIDI'} · {song.source_url ? `From ${providerName(song.source_url)}` : song.source_kind === 'sheet' ? 'From sheet music' : 'Uploaded'} · Saved locally</div>{groupId && (sheets.song_sources || []).filter(source => source.song_id === song.id && source.source_id === groupId).slice(0, 1).map(source => <div key={source.song_id}>{source.pages?.length > 0 && <p className="sheet-song-pages">PDF {source.pages.length === 1 ? 'page' : 'pages'} {source.pages.join(', ')}</p>}{source.warning && <p className="sheet-file-warning">{source.warning}</p>}</div>)}</div><span className={`piano-badge ${piano ? '' : 'candidate'}`}>{piano ? 'Piano only' : 'Other MIDI'}</span><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="heart" active={song.favorite} disabled={busy} label={`${song.favorite ? 'Remove from' : 'Add to'} favorites: ${song.name}`} onClick={() => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite }))} /><IconButton icon="folder" label={`Choose libraries for ${song.name}`} onClick={() => setDialog({ type: 'assign', songId: song.id })} /><IconButton icon="download" label={`Download MIDI: ${song.name}`} onClick={() => download(song)} />{song.source_kind === 'sheet' && <IconButton icon="book" label={`Download editable score: ${song.name}`} onClick={() => downloadRecognizedScore(song)} />}<IconButton icon="edit" label={`Edit song: ${song.name}`} disabled={busy} onClick={() => { setLibraryName(songTitle(song.name)); setSongArtist(song.artist || ''); setSongAlbum(song.album || ''); setDialog({ type: 'rename_song', songId: song.id }); }} /><IconButton icon="trash" label={`Delete song: ${song.name}`} disabled={busy} onClick={() => setDialog({ type: 'delete', songId: song.id })} /><IconButton icon="plus" label={`Add to queue: ${song.name}`} disabled={busy} onClick={() => queueAction('add', { song_id: song.id }, 'Added to the Player queue.')} /><IconButton icon="play" label={`Play ${song.name}`} disabled={onDevice ? local.loading : busy} onClick={() => playSong(song)} /></div></div>}</SortableItem>;
         })}</>}</div></SortableList>;
   }
 
@@ -673,15 +830,18 @@ function App() {
       <div className="side-note"><Icon name="piano" /> A little music for the room.<br />PianoDisc · Prodigy II</div>
     </aside>
     <main className="main">
-      <header className="topbar"><span className="breadcrumb">YOUR ROOM, SET TO MUSIC</span><div className="topbar-status"><span className={`online-count ${connectionError ? 'offline' : ''}`} title="Browsers connected to this piano app. Closed browsers disappear within 90 seconds."><span className="online-dot" />{connectionError ? 'Offline' : status ? `${status.online_count ?? 1} online` : 'Connecting…'}</span><button className={`connection ${playable ? 'connected' : ''}`} title="Piano connection settings" onClick={() => { setDialog({ type: 'connection' }); refresh(); }}><span className="dot" /><span className="label">{connectionError ? 'Piano computer unavailable' : device?.name || (wanted ? 'Waiting for your piano' : status ? 'Connect your piano' : 'Connecting to your Mac…')}</span><Icon name="arrow" /></button></div></header>
+      <header className="topbar"><span className="breadcrumb">YOUR ROOM, SET TO MUSIC</span><div className="topbar-status"><span className={`online-count ${connectionError ? 'offline' : ''}`} title="Browsers connected to this piano app. Closed browsers disappear within 90 seconds."><span className="online-dot" />{connectionError ? 'Offline' : status ? `${status.online_count ?? 1} online` : 'Connecting…'}</span><button className={`connection ${onDevice || playable ? 'connected' : ''}`} title="Connect to a device" onClick={openConnection}><span className="dot" /><span className="label">{onDevice ? `Playing on ${thisDevice.name}` : connectionError ? 'Piano computer unavailable' : device?.name || (wanted ? 'Waiting for your piano' : status ? 'Connect your piano' : 'Connecting to your Mac…')}</span><Icon name="arrow" /></button></div></header>
       <div className="intro"><div><span className="eyebrow">{view === 'player' ? 'Your room, set to music' : view === 'discover' ? 'Find your next favorite' : 'Make yourself at home'}</span><h1>{view === 'player' ? 'Player' : view === 'discover' ? 'Discover' : view === 'sheets' ? 'Sheet music' : 'Your music'}</h1><p className="subtitle">{view === 'player' ? 'Choose a song or build a queue.' : view === 'discover' ? 'Search MIDI sites and save songs to your library.' : view === 'sheets' ? 'Turn printed notes into songs for your piano.' : 'Saved songs, favorites, and your libraries.'}</p></div>{(view === 'all' || selectedLibrary) && <button className="btn light" onClick={() => fileInput.current?.click()} disabled={busy} title={selectedLibrary ? `Upload MIDI to ${selectedLibrary.name}` : 'Upload MIDI to All songs'}><Icon name="upload" />Upload MIDI</button>}{view === 'sheets' && <button className="btn light" onClick={() => sheetInput.current?.click()} disabled={busy}><Icon name="upload" />Upload sheet music</button>}<input ref={sheetInput} type="file" accept=".pdf,.png,.jpg,.jpeg,.xml,.musicxml,.mxl" multiple onChange={uploadSheets} hidden /><input ref={fileInput} type="file" accept=".mid,.midi" multiple onChange={upload} hidden /></div>
       {notice && <div className={`message visible ${notice.success ? 'success' : ''}`} role={notice.success ? 'status' : 'alert'} aria-live="polite">{notice.text}{notice.undoSheetId && <button className="btn light small" style={{ marginLeft: 12 }} onClick={async () => { const result = await run(() => post('/api/sheets/restore', { id: notice.undoSheetId }), 'File restored.'); if (result) await refreshSheets(); }}>Undo</button>}{notice.undoSongId && <button className="btn light small" style={{ marginLeft: 12 }} onClick={() => run(() => post('/api/library', { action: 'restore', song_id: notice.undoSongId }), 'Song restored.')}>Undo</button>}</div>}
 
       {view === 'player' && <section aria-label="Player">
-        <section className="player" aria-label="Piano player"><div className={`art ${showArtwork ? 'has-cover' : ''}`} aria-hidden={showArtwork || spotifyLink ? undefined : true}>{canLoadArtwork && <img className={`album-cover ${showArtwork ? 'is-ready' : ''}`} src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} />}{!showArtwork && <div className="keys">{[true, true, false, true, true, true, false].map((black, index) => <i className={black ? 'black' : ''} key={index} />)}</div>}{spotifyLink && <a className="spotify-cover-link" href={spotifyLink} target="_blank" rel="noopener noreferrer" aria-label="Find this album on Spotify" title="Find this album on Spotify"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1ed760"/><path d="M5 8c5-1.7 10-1.2 14 1M6 12c4-1.3 8-1 12 1M7 16c3-.8 6-.5 9 1" fill="none" stroke="#121d16" strokeWidth="1.7" strokeLinecap="round"/></svg>Spotify ↗</span></a>}</div><div className="player-content"><div className="eyebrow"><span className="playing-pulse" /><span>{playing ? 'Now playing' : status?.paused ? 'Paused' : 'Ready when you are'}</span></div><h2 className="song-title">{status?.name ? songTitle(status.name) : 'Waiting for a song'}</h2>{(current?.artist || current?.album) && <p className="player-record">{[current.artist, current.album].filter(Boolean).join(' · ')}</p>}<p className="song-meta">{status?.name ? `${current?.piano_only === true ? 'Piano only' : 'Other MIDI'} · ${current?.source_url ? `From your ${providerName(current.source_url)} collection` : current?.source_kind === 'sheet' ? 'From your sheet music' : 'From your saved music'}` : 'Choose a piece from your music to get started.'}</p><div className="progress-row"><span>{time(elapsed)}</span><input className="song-timeline" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(duration || 1, elapsed)} aria-label="Song timeline" aria-valuetext={`${time(elapsed)} of ${time(duration)}`} disabled={busy || !status?.song_id || !duration} onChange={event => setSeekPreview({ songId: status.song_id, seconds: Number(event.target.value) })} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(duration)}</span></div>
-          <div className="player-bottom"><div className="controls"><button className="icon-button" aria-label="Previous song" title="Previous song" disabled={busy || queueIndex <= 0} onClick={() => queueAction('previous')}><Icon name="arrow" style={{ transform: 'rotate(180deg)' }} /></button><button className="play-button" aria-label={status?.paused ? 'Resume' : 'Play'} title={status?.paused ? 'Resume' : 'Play'} disabled={busy || !playable || playing || (!status?.name && !queueIds.length)} onClick={() => queueAction('play', status?.song_id && queueIds[queueIndex] !== status.song_id ? { song_id: status.song_id } : {})}><Icon name="play" /></button><button className="icon-button" aria-label="Pause" title="Pause" disabled={busy || !playing} onClick={() => control('pause')}><Icon name="pause" /></button><button className="icon-button" aria-label="Next song" title="Next song" disabled={busy || !queueIds.length || queueIndex >= queueIds.length - 1} onClick={() => queueAction('next')}><Icon name="arrow" /></button><button className="icon-button" aria-label="Stop and release keys" title="Stop & release keys" onClick={() => control('stop')} disabled={busy}><Icon name="stop" /></button></div>
-            <div className="volume-wrap"><label htmlFor="volume" aria-label="Piano volume"><Icon name="volume" /></label><input id="volume" type="range" min="0" max="100" value={volume} aria-label="Piano volume" onChange={event => { volumeDragging.current = true; setVolume(Number(event.target.value)); }} onPointerUp={event => saveVolume(Number(event.currentTarget.value))} onKeyUp={event => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) saveVolume(Number(event.currentTarget.value)); }} onBlur={event => { if (volumeDragging.current) saveVolume(Number(event.currentTarget.value)); }} /><output htmlFor="volume">{volume}%</output></div>
-          </div></div></section>
+        <section className="player" aria-label="Piano player"><div className={`art ${showArtwork ? 'has-cover' : ''}`} aria-hidden={showArtwork || spotifyLink ? undefined : true}>{canLoadArtwork && <img className={`album-cover ${showArtwork ? 'is-ready' : ''}`} src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} />}{!showArtwork && <div className="keys">{[true, true, false, true, true, true, false].map((black, index) => <i className={black ? 'black' : ''} key={index} />)}</div>}{spotifyLink && <a className="spotify-cover-link" href={spotifyLink} target="_blank" rel="noopener noreferrer" aria-label="Find this album on Spotify" title="Find this album on Spotify"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1ed760"/><path d="M5 8c5-1.7 10-1.2 14 1M6 12c4-1.3 8-1 12 1M7 16c3-.8 6-.5 9 1" fill="none" stroke="#121d16" strokeWidth="1.7" strokeLinecap="round"/></svg>Spotify ↗</span></a>}</div><div className="player-content"><div className="eyebrow"><span className="playing-pulse" /><span>{onDevice && local.loading ? 'Loading…' : isPlaying ? 'Now playing' : isPaused ? 'Paused' : 'Ready when you are'}</span></div><h2 className="song-title">{playerName ? songTitle(playerName) : 'Waiting for a song'}</h2>{(playerSong?.artist || playerSong?.album) && <p className="player-record">{[playerSong.artist, playerSong.album].filter(Boolean).join(' · ')}</p>}<p className="song-meta">{playerName ? `${playerSong?.piano_only === true ? 'Piano only' : 'Other MIDI'} · ${playerSong?.source_url ? `From your ${providerName(playerSong.source_url)} collection` : playerSong?.source_kind === 'sheet' ? 'From your sheet music' : 'From your saved music'}` : 'Choose a piece from your music to get started.'}</p><div className="progress-row"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Song timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
+          <div className="player-bottom"><div className="controls"><button className="icon-button" aria-label="Previous song" title="Previous song" disabled={!canPrevious} onClick={() => playerSkip(-1)}><Icon name="arrow" style={{ transform: 'rotate(180deg)' }} /></button><button className="play-button" aria-label={isPaused ? 'Resume' : 'Play'} title={isPaused ? 'Resume' : 'Play'} disabled={!canPlay || isPlaying} onClick={playerPlay}>{onDevice && local.loading ? <span className="spinner" /> : <Icon name="play" />}</button><button className="icon-button" aria-label="Pause" title="Pause" disabled={onDevice ? !isPlaying : busy || !playing} onClick={playerPause}><Icon name="pause" /></button><button className="icon-button" aria-label="Next song" title="Next song" disabled={!canNext} onClick={() => playerSkip(1)}><Icon name="arrow" /></button><button className="icon-button" aria-label={onDevice ? 'Stop' : 'Stop and release keys'} title={onDevice ? 'Stop' : 'Stop & release keys'} onClick={playerStop} disabled={onDevice ? local.state === 'stopped' && !local.loading : busy}><Icon name="stop" /></button></div>
+            <div className="player-tools"><DevicePicker {...pickerProps} />{onDevice
+              ? <div className="volume-wrap"><label htmlFor="volume" aria-label="Volume on this device"><Icon name="volume" /></label><input id="volume" type="range" min="0" max="100" value={local.volume} aria-label="Volume on this device" onChange={event => local.setVolume(Number(event.target.value))} /><output htmlFor="volume">{local.volume}%</output></div>
+              : <div className="volume-wrap"><label htmlFor="volume" aria-label="Piano volume"><Icon name="volume" /></label><input id="volume" type="range" min="0" max="100" value={volume} aria-label="Piano volume" onChange={event => { volumeDragging.current = true; setVolume(Number(event.target.value)); }} onPointerUp={event => saveVolume(Number(event.currentTarget.value))} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) saveVolume(Number(event.currentTarget.value)); }} onBlur={event => { if (volumeDragging.current) saveVolume(Number(event.currentTarget.value)); }} /><output htmlFor="volume">{volume}%</output></div>}</div>
+          </div>
+          <p className={`playing-on ${onDevice ? 'is-local' : ''}`}><Icon name={currentEntry.icon} />Playing on {currentEntry.name}{onDevice && ' · simple piano sound, the piano stays silent'}</p></div></section>
         <button className="adaptation-card" onClick={openAdaptation} disabled={busy} aria-label="Change playback sound">
           <span className="adaptation-card-icon"><Icon name="piano" /></span>
           <span className="adaptation-card-content">
@@ -691,13 +851,13 @@ function App() {
           </span>
           <Icon name="arrow" />
         </button>
-        <div className="content-heading queue-header"><div><h2>Your queue</h2><p className="section-note">{queueIds.length ? `${queueIds.length} ${queueIds.length === 1 ? 'piece' : 'pieces'} · Plays in order. Reorder to set the mood.` : 'Add songs from your music or queue a whole library.'}</p></div><div className="queue-tools"><button className="btn small" disabled={busy || !queueIds.length || !playable || playing} onClick={() => queueAction('play')}><Icon name="play" />Play queue</button><button className="btn light small" disabled={busy || !queueIds.length} onClick={() => queueAction('clear')}>Clear queue</button></div></div>
+        <div className="content-heading queue-header"><div><h2>Your queue</h2><p className="section-note">{queueIds.length ? `${queueIds.length} ${queueIds.length === 1 ? 'piece' : 'pieces'} · Plays in order. Reorder to set the mood.` : 'Add songs from your music or queue a whole library.'}</p></div><div className="queue-tools"><button className="btn small" disabled={!queueIds.length || (onDevice ? local.loading : busy || !playable || playing)} onClick={() => onDevice ? playQueued(0) : queueAction('play')}><Icon name="play" />Play queue</button><button className="btn light small" disabled={busy || !queueIds.length} onClick={() => queueAction('clear')}>Clear queue</button></div></div>
         <SortableList items={queueEntryIds} getLabel={entry => songTitle(library.songs.find(song => song.id === queueIds[queueEntryIds.indexOf(entry)])?.name)} onStart={from => startReorder('queue', from)} onEnd={finishReorder} onCancel={cancelReorder}>
         <div className="song-list" role="list" aria-label="Song queue">{!queueIds.length ? <EmptyState title="Your next song starts here." description="Add a few favorites or queue an entire library. Nothing starts until you press play." button="Browse your music" onClick={() => navigate('all')} /> : queueIds.map((id, index) => {
           const song = library.songs.find(item => item.id === id);
           const entryKey = `${id}-${queueIds.slice(0, index).filter(queuedId => queuedId === id).length}`;
           if (!song) return null;
-          return <SortableItem key={entryKey} id={entryKey} disabled={busy || queueIds.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} className={`queue-row ${index === queueIndex ? 'is-current' : ''}`} role="listitem"><span className="queue-number"><button className="sort-handle" disabled={busy || queueIds.length < 2} aria-label={`Reorder queued song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button>{String(index + 1).padStart(2, '0')}</span><div className="song-info"><div className="song-name" title={song.name}>{songTitle(song.name)}</div><div className="queue-status">{index === queueIndex ? playing ? 'Now playing' : 'Selected' : queueIndex >= 0 && index < queueIndex ? 'Earlier in queue' : 'Up next'} · {song.piano_only === true ? 'Piano only' : 'Other MIDI'}</div></div><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="arrow" style={{ transform: 'rotate(-90deg)' }} label={`Move up: ${song.name}`} disabled={busy || index === 0} onClick={() => queueAction('move', { from: index, to: index - 1 })} /><IconButton icon="arrow" style={{ transform: 'rotate(90deg)' }} label={`Move down: ${song.name}`} disabled={busy || index === queueIds.length - 1} onClick={() => queueAction('move', { from: index, to: index + 1 })} /><IconButton icon="play" label={`Play queued song: ${song.name}`} disabled={busy || !playable} onClick={() => queueAction('play', { index })} /><IconButton icon="close" label={`Remove from queue: ${song.name}`} disabled={busy} onClick={() => queueAction('remove', { index })} /></div></div>}</SortableItem>;
+          return <SortableItem key={entryKey} id={entryKey} disabled={busy || queueIds.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} className={`queue-row ${index === activeIndex ? 'is-current' : ''}`} role="listitem"><span className="queue-number"><button className="sort-handle" disabled={busy || queueIds.length < 2} aria-label={`Reorder queued song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button>{String(index + 1).padStart(2, '0')}</span><div className="song-info"><div className="song-name" title={song.name}>{songTitle(song.name)}</div><div className="queue-status">{index === activeIndex ? isPlaying ? 'Now playing' : 'Selected' : activeIndex >= 0 && index < activeIndex ? 'Earlier in queue' : 'Up next'} · {song.piano_only === true ? 'Piano only' : 'Other MIDI'}</div></div><span className="duration">{time(song.duration_seconds)}</span><div className="row-actions"><IconButton icon="arrow" style={{ transform: 'rotate(-90deg)' }} label={`Move up: ${song.name}`} disabled={busy || index === 0} onClick={() => queueAction('move', { from: index, to: index - 1 })} /><IconButton icon="arrow" style={{ transform: 'rotate(90deg)' }} label={`Move down: ${song.name}`} disabled={busy || index === queueIds.length - 1} onClick={() => queueAction('move', { from: index, to: index + 1 })} /><IconButton icon="play" label={`Play queued song: ${song.name}`} disabled={onDevice ? local.loading : busy || !playable} onClick={() => playQueued(index)} /><IconButton icon="close" label={`Remove from queue: ${song.name}`} disabled={busy} onClick={() => queueAction('remove', { index })} /></div></div>}</SortableItem>;
         })}</div></SortableList>
       </section>}
 
@@ -729,12 +889,13 @@ function App() {
     {view !== 'player' && <section className="mini-player" aria-label="Mini player">
       <button className="mini-player-song" onClick={() => navigate('player')} aria-label="Open full player">
         <span className="mini-player-art">{canLoadArtwork ? <img src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} /> : <Icon name="piano" />}</span>
-        <span className="mini-player-title"><strong>{status?.name ? songTitle(status.name) : 'Waiting for a song'}</strong><small>{current?.artist || (playing ? 'Now playing' : status?.paused ? 'Paused' : 'Open player')}</small></span>
+        <span className="mini-player-title"><strong>{playerName ? songTitle(playerName) : 'Waiting for a song'}</strong>{onDevice ? <small className="mini-playing-on">Playing on {currentEntry.name}</small> : <small>{playerSong?.artist || (isPlaying ? 'Now playing' : isPaused ? 'Paused' : 'Open player')}</small>}</span>
       </button>
-      <div className="mini-player-progress"><span>{time(elapsed)}</span><input className="song-timeline" type="range" min="0" max={duration || 1} step="0.1" value={Math.min(duration || 1, elapsed)} aria-label="Mini player timeline" aria-valuetext={`${time(elapsed)} of ${time(duration)}`} disabled={busy || !status?.song_id || !duration} onChange={event => setSeekPreview({ songId: status.song_id, seconds: Number(event.target.value) })} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'].includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(duration)}</span></div>
+      <div className="mini-player-progress"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Mini player timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
       <div className="mini-player-controls">
-        <button className="mini-player-play" aria-label={playing ? 'Pause' : status?.paused ? 'Resume' : 'Play'} disabled={busy || (!playing && (!playable || (!status?.name && !queueIds.length)))} onClick={() => playing ? control('pause') : queueAction('play', status?.song_id && queueIds[queueIndex] !== status.song_id ? { song_id: status.song_id } : {})}><Icon name={playing ? 'pause' : 'play'} /></button>
-        <button className="icon-button" aria-label="Next song" disabled={busy || !queueIds.length || queueIndex >= queueIds.length - 1} onClick={() => queueAction('next')}><Icon name="arrow" /></button>
+        <DevicePicker {...pickerProps} />
+        <button className="mini-player-play" aria-label={isPlaying ? 'Pause' : isPaused ? 'Resume' : 'Play'} disabled={isPlaying ? !onDevice && busy : !canPlay} onClick={() => isPlaying ? playerPause() : playerPlay()}>{onDevice && local.loading ? <span className="spinner" /> : <Icon name={isPlaying ? 'pause' : 'play'} />}</button>
+        <button className="icon-button" aria-label="Next song" disabled={!canNext} onClick={() => playerSkip(1)}><Icon name="arrow" /></button>
       </div>
     </section>}
     <nav className="mobile-dock" aria-label="Main navigation">
@@ -800,10 +961,7 @@ function App() {
       <div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => { adaptationRequest.current += 1; setDialog(null); }}>Cancel</button><button className="btn" disabled={busy || adaptationLoading || !adaptationData || adaptationMode === 'custom' && (!adaptationSongId || !adaptationParts.length) || adaptationMode === 'piano' && !!adaptationSongId && !hasPianoParts} onClick={applyAdaptation}>{dialog.applyNow ? 'Apply sound' : 'Save settings'}</button></div>
     </Dialog>}
 
-    {dialog?.type === 'connection' && <Dialog title="Your piano" onClose={() => setDialog(null)}><label htmlFor="device" className="dialog-label">MIDI connection</label><select id="device" className="field" value={device ? String(device.id) : ''} onChange={event => {
-      const chosen = devices.find(item => String(item.id) === event.target.value);
-      if (chosen) { const name = chosen.stableName || chosen.name; setPreferred(name); storage.set('piano-device-name', name); }
-    }}><option value="">{devices.length ? 'Choose your piano…' : 'No MIDI piano connected'}</option>{devices.map(item => <option key={item.id} value={String(item.id)}>{item.name}</option>)}</select><div className="dialog-actions"><button className="btn light small" onClick={refresh}>Refresh devices</button><button className="btn small" disabled={busy || !wanted} onClick={() => run(() => post('/api/reconnect', { name: wanted }), 'Reconnecting your piano. Press Play once it is connected.')}>Reconnect piano</button></div><p className="dialog-hint" style={{ marginTop: 18 }}>We remember your piano and reconnect when its MIDI connection returns. Playback starts only when you press play.</p><p className="dialog-hint">If another app used the piano, disconnect it there first, then press Reconnect piano. {status?.platform === 'linux' ? 'On Raspberry Pi, choose your piano from the device list and press Reconnect piano. Keep it disconnected from other apps, or use USB.' : 'On your Mac, open Audio MIDI Setup → MIDI Studio → Bluetooth, then connect to Prodigy2 MIDI. Keep the Mac connected, or use USB.'}</p><p className="dialog-hint">{preferred ? `Remembered piano: ${preferred}. ` : ''}{status?.bluetooth?.message || ''}</p><div className="dialog-actions"><button className="btn" onClick={() => setDialog(null)}>Done</button></div></Dialog>}
+    {dialog?.type === 'connection' && <Dialog title="Connect to a device" onClose={() => setDialog(null)}><div className="device-dialog-list"><DeviceOptions current={currentEntry} others={otherEntries} playing={isPlaying} emptyNote={noPianoNote} onChoose={chooseDevice} /></div><div className="dialog-actions"><button className="btn light small" onClick={refresh}>Refresh devices</button><button className="btn small" disabled={busy || !wanted} onClick={() => run(() => post('/api/reconnect', { name: wanted }), 'Reconnecting your piano. Press Play once it is connected.')}>Reconnect piano</button></div><p className="dialog-hint" style={{ marginTop: 18 }}>We remember your piano and reconnect when its MIDI connection returns. Playback starts only when you press play.</p><p className="dialog-hint">If another app used the piano, disconnect it there first, then press Reconnect piano. {status?.platform === 'linux' ? 'On Raspberry Pi, choose your piano from the device list and press Reconnect piano. Keep it disconnected from other apps, or use USB.' : 'On your Mac, open Audio MIDI Setup → MIDI Studio → Bluetooth, then connect to Prodigy2 MIDI. Keep the Mac connected, or use USB.'}</p><p className="dialog-hint">{preferred ? `Remembered piano: ${preferred}. ` : ''}{status?.bluetooth?.message || ''}</p><div className="dialog-actions"><button className="btn" onClick={() => setDialog(null)}>Done</button></div></Dialog>}
     {['create', 'rename'].includes(dialog?.type) && <Dialog title={dialog.type === 'rename' ? 'Rename library' : 'A library of your own'} onClose={() => setDialog(null)}><form onSubmit={async event => {
       event.preventDefault();
       const name = libraryName.trim();
