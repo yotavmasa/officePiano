@@ -5,6 +5,9 @@ import { SortableList, SortableItem } from './SortableList.jsx';
 import { groupSheetSongs } from './sheetGroups.mjs';
 import SheetBookDialog, { analysisProgressText } from './SheetBookDialog.jsx';
 import { useLocalListener } from './useLocalListener.mjs';
+import { parseMidi } from './localPiano.mjs';
+import { songClock } from './fallingNotes.mjs';
+import FallingNotes from './FallingNotes.jsx';
 
 const storage = {
   get(name) { try { return localStorage.getItem(name) || ''; } catch { return ''; } },
@@ -306,7 +309,18 @@ function App() {
   const [output, setOutput] = useState(() => storage.get('piano-output') === 'device' ? 'device' : 'piano');
   const [localIndex, setLocalIndex] = useState(null);
   const advanceLocal = useRef(null);
-  const local = useLocalListener(fetchSongFile, () => advanceLocal.current?.());
+  const parsedSongs = useRef(new Map());
+  const loadSongNotes = useCallback(songId => {
+    const cache = parsedSongs.current;
+    if (!cache.has(songId)) {
+      cache.set(songId, fetchSongFile(songId).then(parseMidi).catch(error => { cache.delete(songId); throw error; }));
+      if (cache.size > 4) cache.delete(cache.keys().next().value);
+    }
+    return cache.get(songId);
+  }, [fetchSongFile]);
+  const local = useLocalListener(loadSongNotes, () => advanceLocal.current?.());
+  const [showNotes, setShowNotes] = useState(() => storage.get('piano-falling-notes') === 'on');
+  const pianoClock = useRef({ seconds: 0, playing: false, at: 0 });
   async function listenHere(song, index = null, startAt = 0) {
     announce('');
     setLocalIndex(index);
@@ -463,6 +477,19 @@ function App() {
   const canPrevious = onDevice ? !local.loading && deviceIndex > 0 : !busy && queueIndex > 0;
   const canNext = onDevice ? !local.loading && deviceIndex >= 0 && deviceIndex < queueIds.length - 1 : !busy && !!queueIds.length && queueIndex < queueIds.length - 1;
   const previewSeek = seconds => setSeekPreview({ output, songId: playerSongId, seconds });
+  useEffect(() => {
+    pianoClock.current = { seconds: status?.seconds || 0, playing: !!status?.playing && !status?.paused, at: performance.now() };
+  }, [status]);
+  const notesPlaying = isPlaying && !(seekPreview && seekPreview.output === output);
+  const notesTime = () => {
+    if (seekPreview && seekPreview.output === output && seekPreview.songId === playerSongId) return seekPreview.seconds;
+    if (onDevice) return local.song?.id === playerSongId ? local.now() : 0;
+    return status?.song_id === playerSongId ? songClock({ ...pianoClock.current, duration: playerDuration || Infinity }, performance.now()) : 0;
+  };
+  function toggleNotes() {
+    storage.set('piano-falling-notes', showNotes ? 'off' : 'on');
+    setShowNotes(!showNotes);
+  }
   async function seekTo(value) {
     const selected = seekPreview;
     if (!selected) return;
@@ -835,13 +862,17 @@ function App() {
       {notice && <div className={`message visible ${notice.success ? 'success' : ''}`} role={notice.success ? 'status' : 'alert'} aria-live="polite">{notice.text}{notice.undoSheetId && <button className="btn light small" style={{ marginLeft: 12 }} onClick={async () => { const result = await run(() => post('/api/sheets/restore', { id: notice.undoSheetId }), 'File restored.'); if (result) await refreshSheets(); }}>Undo</button>}{notice.undoSongId && <button className="btn light small" style={{ marginLeft: 12 }} onClick={() => run(() => post('/api/library', { action: 'restore', song_id: notice.undoSongId }), 'Song restored.')}>Undo</button>}</div>}
 
       {view === 'player' && <section aria-label="Player">
-        <section className="player" aria-label="Piano player"><div className={`art ${showArtwork ? 'has-cover' : ''}`} aria-hidden={showArtwork || spotifyLink ? undefined : true}>{canLoadArtwork && <img className={`album-cover ${showArtwork ? 'is-ready' : ''}`} src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} />}{!showArtwork && <div className="keys">{[true, true, false, true, true, true, false].map((black, index) => <i className={black ? 'black' : ''} key={index} />)}</div>}{spotifyLink && <a className="spotify-cover-link" href={spotifyLink} target="_blank" rel="noopener noreferrer" aria-label="Find this album on Spotify" title="Find this album on Spotify"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1ed760"/><path d="M5 8c5-1.7 10-1.2 14 1M6 12c4-1.3 8-1 12 1M7 16c3-.8 6-.5 9 1" fill="none" stroke="#121d16" strokeWidth="1.7" strokeLinecap="round"/></svg>Spotify ↗</span></a>}</div><div className="player-content"><div className="eyebrow"><span className="playing-pulse" /><span>{onDevice && local.loading ? 'Loading…' : isPlaying ? 'Now playing' : isPaused ? 'Paused' : 'Ready when you are'}</span></div><h2 className="song-title">{playerName ? songTitle(playerName) : 'Waiting for a song'}</h2>{(playerSong?.artist || playerSong?.album) && <p className="player-record">{[playerSong.artist, playerSong.album].filter(Boolean).join(' · ')}</p>}<p className="song-meta">{playerName ? `${playerSong?.piano_only === true ? 'Piano only' : 'Other MIDI'} · ${playerSong?.source_url ? `From your ${providerName(playerSong.source_url)} collection` : playerSong?.source_kind === 'sheet' ? 'From your sheet music' : 'From your saved music'}` : 'Choose a piece from your music to get started.'}</p><div className="progress-row"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Song timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
+        <section className="player" aria-label="Piano player"><div className={`art ${showArtwork ? 'has-cover' : ''}`} aria-hidden={showArtwork || spotifyLink ? undefined : true}>{canLoadArtwork && <img className={`album-cover ${showArtwork ? 'is-ready' : ''}`} src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} />}{!showArtwork && <div className="keys">{[true, true, false, true, true, true, false].map((black, index) => <i className={black ? 'black' : ''} key={index} />)}</div>}{spotifyLink && <a className="spotify-cover-link" href={spotifyLink} target="_blank" rel="noopener noreferrer" aria-label="Find this album on Spotify" title="Find this album on Spotify"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1ed760" stroke="none"/><path d="M5 8c5-1.7 10-1.2 14 1M6 12c4-1.3 8-1 12 1M7 16c3-.8 6-.5 9 1" fill="none" stroke="#121d16" strokeWidth="1.7" strokeLinecap="round"/></svg>Spotify ↗</span></a>}</div><div className="player-content"><div className="eyebrow"><span className="playing-pulse" /><span>{onDevice && local.loading ? 'Loading…' : isPlaying ? 'Now playing' : isPaused ? 'Paused' : 'Ready when you are'}</span></div><h2 className="song-title">{playerName ? songTitle(playerName) : 'Waiting for a song'}</h2>{(playerSong?.artist || playerSong?.album) && <p className="player-record">{[playerSong.artist, playerSong.album].filter(Boolean).join(' · ')}</p>}<p className="song-meta">{playerName ? `${playerSong?.piano_only === true ? 'Piano only' : 'Other MIDI'} · ${playerSong?.source_url ? `From your ${providerName(playerSong.source_url)} collection` : playerSong?.source_kind === 'sheet' ? 'From your sheet music' : 'From your saved music'}` : 'Choose a piece from your music to get started.'}</p><div className="progress-row"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Song timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
           <div className="player-bottom"><div className="controls"><button className="icon-button" aria-label="Previous song" title="Previous song" disabled={!canPrevious} onClick={() => playerSkip(-1)}><Icon name="arrow" style={{ transform: 'rotate(180deg)' }} /></button><button className="play-button" aria-label={isPaused ? 'Resume' : 'Play'} title={isPaused ? 'Resume' : 'Play'} disabled={!canPlay || isPlaying} onClick={playerPlay}>{onDevice && local.loading ? <span className="spinner" /> : <Icon name="play" />}</button><button className="icon-button" aria-label="Pause" title="Pause" disabled={onDevice ? !isPlaying : busy || !playing} onClick={playerPause}><Icon name="pause" /></button><button className="icon-button" aria-label="Next song" title="Next song" disabled={!canNext} onClick={() => playerSkip(1)}><Icon name="arrow" /></button><button className="icon-button" aria-label={onDevice ? 'Stop' : 'Stop and release keys'} title={onDevice ? 'Stop' : 'Stop & release keys'} onClick={playerStop} disabled={onDevice ? local.state === 'stopped' && !local.loading : busy}><Icon name="stop" /></button></div>
             <div className="player-tools"><DevicePicker {...pickerProps} />{onDevice
               ? <div className="volume-wrap"><label htmlFor="volume" aria-label="Volume on this device"><Icon name="volume" /></label><input id="volume" type="range" min="0" max="100" value={local.volume} aria-label="Volume on this device" onChange={event => local.setVolume(Number(event.target.value))} /><output htmlFor="volume">{local.volume}%</output></div>
               : <div className="volume-wrap"><label htmlFor="volume" aria-label="Piano volume"><Icon name="volume" /></label><input id="volume" type="range" min="0" max="100" value={volume} aria-label="Piano volume" onChange={event => { volumeDragging.current = true; setVolume(Number(event.target.value)); }} onPointerUp={event => saveVolume(Number(event.currentTarget.value))} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) saveVolume(Number(event.currentTarget.value)); }} onBlur={event => { if (volumeDragging.current) saveVolume(Number(event.currentTarget.value)); }} /><output htmlFor="volume">{volume}%</output></div>}</div>
           </div>
           <p className={`playing-on ${onDevice ? 'is-local' : ''}`}><Icon name={currentEntry.icon} />Playing on {currentEntry.name}{onDevice && ' · simple piano sound, the piano stays silent'}</p></div></section>
+        <section className={`notes-panel ${showNotes ? 'is-open' : ''}`} aria-labelledby="notes-heading">
+          <div className="notes-panel-header"><div><h2 id="notes-heading">Falling notes</h2><p className="section-note">Notes from the original file, without drums.</p></div><button type="button" className="btn small" aria-expanded={showNotes} aria-controls="falling-notes" onClick={toggleNotes}>{showNotes ? 'Hide' : 'Show'}</button></div>
+          {showNotes && <div id="falling-notes"><FallingNotes songId={playerSongId} loadSong={loadSongNotes} getTime={notesTime} playing={notesPlaying} position={playerElapsed} /></div>}
+        </section>
         <button className="adaptation-card" onClick={openAdaptation} disabled={busy} aria-label="Change playback sound">
           <span className="adaptation-card-icon"><Icon name="piano" /></span>
           <span className="adaptation-card-content">

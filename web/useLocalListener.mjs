@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { LocalPiano, parseMidi } from './localPiano.mjs';
+import { LocalPiano } from './localPiano.mjs';
 
 const VOLUME_KEY = 'piano-local-volume';
 
@@ -10,7 +10,7 @@ function savedVolume() {
   } catch { return 80; }
 }
 
-export function useLocalListener(loadSongFile, onEnd) {
+export function useLocalListener(loadSong, onEnd) {
   const engine = useRef(null);
   const ended = useRef(onEnd);
   ended.current = onEnd;
@@ -50,7 +50,7 @@ export function useLocalListener(loadSongFile, onEnd) {
     if (loaded.current.id !== target.id) {
       setLoading(true);
       try {
-        const parsed = parseMidi(await loadSongFile(target.id));
+        const parsed = await loadSong(target.id);
         if (id !== request.current) return;
         if (!parsed.notes.length) throw Error('This song has no notes to play on this device.');
         loaded.current = { id: target.id, parsed };
@@ -67,7 +67,7 @@ export function useLocalListener(loadSongFile, onEnd) {
     setPosition(player.position);
     player.play();
     setState('playing');
-  }, [piano, loadSongFile]);
+  }, [piano, loadSong]);
 
   const pause = useCallback(() => {
     engine.current?.pause();
@@ -99,5 +99,7 @@ export function useLocalListener(loadSongFile, onEnd) {
     try { localStorage.setItem(VOLUME_KEY, String(value)); } catch {}
   }, []);
 
-  return { state, song, position, duration, loading, volume, listen, pause, resume, stop, seek, setVolume };
+  const now = useCallback(() => engine.current?.position ?? 0, []);
+
+  return { state, song, position, duration, loading, volume, listen, pause, resume, stop, seek, setVolume, now };
 }
