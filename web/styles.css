@@ -1895,3 +1895,12 @@ h2,
 
 .nav button:has(.nav-wip) { gap: 6px; white-space: nowrap; }
 .nav .nav-wip { font-size: 8px; padding: 2px 3px; }
+
+.notes-panel { margin: -9px 0 29px; padding: 16px 19px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.notes-panel-header { display: flex; align-items: center; justify-content: space-between; gap: 15px; }
+.notes-panel-header h2 { margin: 0 0 3px; font-size: 17px; }
+.notes-panel-header .section-note { margin: 0; }
+.falling-notes { position: relative; height: clamp(220px, 34vw, 360px); margin-top: 14px; border-radius: 10px; overflow: hidden; background: #1d342c; }
+.falling-notes canvas { display: block; width: 100%; height: 100%; }
+.falling-notes-message { position: absolute; inset: 0 0 22%; margin: 0; display: grid; place-items: center; padding: 16px; color: #d8e4bc; font-size: 13px; text-align: center; }
+@media (max-width: 740px) { .notes-panel { padding: 14px; } .falling-notes { height: 220px; } }
