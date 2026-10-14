@@ -860,7 +860,7 @@ function App() {
   }
 
   const hasCurrent = activeIndex >= 0 && !!songAt(activeIndex);
-  const nowLabel = isPlaying ? 'Now playing' : isPaused ? 'Paused' : 'Plays first';
+  const nowLabel = 'Now playing';
   const queueSections = [
     { key: 'next', title: 'Next up', start: hasCurrent ? activeIndex + 1 : 0, end: queueIds.length },
     { key: 'earlier', title: 'Earlier in queue', start: 0, end: hasCurrent ? activeIndex : 0 },
