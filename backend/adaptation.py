@@ -98,22 +98,52 @@ def _part_shift(instrument):
     pitches = [note.pitch for note in instrument.notes]
     if not pitches:
         return 0
+    # A small tail of invalid keys must not transpose an otherwise playable part.
+    if sum(21 <= pitch <= 108 for pitch in pitches) >= .9 * len(pitches):
+        return 0
     shifts = [shift for shift in range(-108, 109, 12) if min(pitches) + shift >= 21 and max(pitches) + shift <= 108]
     return min(shifts, key=abs) if shifts else 0
 
 
-def _merge_overlap(notes):
+def _merge_overlap(notes, voices=None):
     """One physical key cannot sustain overlapping copies on separate channels."""
     merged, count = [], 0
-    for note in sorted(notes, key=lambda note: (note.pitch, note.start, note.end)):
-        if merged and merged[-1].pitch == note.pitch and note.start < merged[-1].end - 1e-9:
-            previous = merged[-1]
-            if abs(previous.start - note.start) < 1e-9:
-                previous.velocity = max(previous.velocity, note.velocity)
-            previous.end = max(previous.end, note.end)
-            count += 1
-        else:
-            merged.append(note)
+    for pitch, group in groupby(sorted(notes, key=lambda note: (note.pitch, note.start, note.end)), key=lambda note: note.pitch):
+        clusters, cluster, end = [], [], 0
+        for note in group:
+            if cluster and note.start >= end - 1e-9:
+                clusters.append(cluster)
+                cluster, end = [], 0
+            cluster.append(note)
+            end = max(end, note.end)
+        if cluster:
+            clusters.append(cluster)
+        for cluster in clusters:
+            starts = {}
+            if voices:
+                for note in cluster:
+                    starts.setdefault(voices[id(note)], set()).add(note.start)
+            repeated = any(len(onsets) > 1 for onsets in starts.values())
+            if repeated:
+                attacks = []
+                for _, simultaneous in groupby(cluster, key=lambda note: note.start):
+                    attacks.append(max(simultaneous, key=lambda note: note.velocity))
+                final_release = max(note.end for note in cluster)
+                for index, note in enumerate(attacks):
+                    if index + 1 < len(attacks):
+                        next_start = attacks[index + 1].start
+                        gap = min(.008, (next_start - note.start) / 2)
+                        note.end = next_start - gap
+                    else:
+                        note.end = final_release
+                merged.extend(attacks)
+                count += len(cluster) - len(attacks)
+            else:
+                first = cluster[0]
+                first.velocity = max(note.velocity for note in cluster if abs(note.start - first.start) < 1e-9)
+                first.end = max(note.end for note in cluster)
+                merged.append(first)
+                count += len(cluster) - 1
     return sorted(merged, key=lambda note: (note.start, note.pitch)), count
 
 
@@ -192,14 +222,22 @@ def render(data, settings):
         raise ValueError('This MIDI has no melodic parts to adapt. Choose a different song.')
     instruments = [music.instruments[int(identity)] for identity in selected]
     total_notes = sum(len(instrument.notes) for instrument in music.instruments)
-    original_notes = [note for instrument in instruments for note in instrument.notes]
     shifts = {id(instrument): _part_shift(instrument) if mode == 'smart' else 0 for instrument in instruments}
-    notes = [pretty.Note(velocity=note.velocity, pitch=_fold(note.pitch + shifts[id(instrument)]), start=note.start, end=note.end)
-             for instrument in instruments for note in instrument.notes]
-    shifted = {id(copy) for source, copy in zip(original_notes, notes) if source.pitch != copy.pitch}
+    notes, voices, shifted, outside = [], {}, set(), 0
+    for index, instrument in enumerate(instruments):
+        for note in instrument.notes:
+            pitch = note.pitch + shifts[id(instrument)]
+            if mode == 'smart' and not 21 <= pitch <= 108:
+                outside += 1
+                continue
+            copy = pretty.Note(velocity=note.velocity, pitch=_fold(pitch), start=note.start, end=note.end)
+            notes.append(copy)
+            voices[id(copy)] = index
+            if copy.pitch != note.pitch:
+                shifted.add(id(copy))
     merged_notes = 0
     if mode in ('smart', 'custom'):
-        notes, merged_notes = _merge_overlap(notes)
+        notes, merged_notes = _merge_overlap(notes, voices if mode == 'smart' else None)
     if not notes:
         raise ValueError('The selected parts have no playable notes. Select another part.')
     shifted_notes = sum(id(note) in shifted for note in notes)
@@ -226,10 +264,11 @@ def render(data, settings):
     if merged_notes:
         notice += f' {merged_notes} overlapping copies of the same key were joined to prevent early note releases.'
     if mode == 'smart':
-        notice += ' Each part uses a consistent octave shift when its full range fits the piano.'
-        notice += ' All notes in the selected parts are kept; no polyphony cap is applied.'
+        notice += ' Repeated attacks within a part are preserved with an 8 ms release gap inside overlapping holds. Mostly playable parts keep their original register; no polyphony cap is applied.'
+    if outside:
+        notice += f' {outside} notes outside the piano range were left out rather than moving the whole part.'
     if shifted_notes:
         notice += f' {shifted_notes} notes were shifted by octaves to fit the 88-key range.'
     return rendered, {'mode': mode, 'label': LABELS[mode], 'selected_parts': selected,
                       'selected_names': selected_names, 'removed_notes': removed_notes,
-                      'shifted_notes': shifted_notes, 'merged_notes': merged_notes, 'notice': notice, 'duration_seconds': duration, 'original': False}
+                      'shifted_notes': shifted_notes, 'merged_notes': merged_notes, 'out_of_range_notes': outside, 'notice': notice, 'duration_seconds': duration, 'original': False}
