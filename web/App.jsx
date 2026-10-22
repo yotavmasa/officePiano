@@ -501,6 +501,16 @@ function App() {
     if (!device || connectionError) throw Error('Connect your piano before playing. Open the connection button at the top.');
     return Number(device.id);
   }
+  // Piano key presses go out one at a time so a release never overtakes its press.
+  const pianoKeys = useRef(Promise.resolve());
+  function sendPianoKey(pitch, velocity, on) {
+    pianoKeys.current = pianoKeys.current.then(async () => {
+      try { await post('/api/control', { action: 'note', pitch, velocity, on, device: requireDevice() }); }
+      catch (error) { if (on) announce(error.message || 'The piano could not play that key.'); }
+    });
+  }
+  const pressKey = (pitch, velocity) => onDevice ? local.press(pitch, velocity) : sendPianoKey(pitch, velocity, true);
+  const releaseKey = pitch => onDevice ? local.release(pitch) : sendPianoKey(pitch, 1, false);
   async function queueAction(action, payload = {}, success = '', showPlayer = false) {
     const result = await run(() => {
       const data = { action, ...payload };
@@ -1211,8 +1221,8 @@ function App() {
           </div>
           <p className={`playing-on ${onDevice ? 'is-local' : ''}`}><Icon name={currentEntry.icon} />Playing on {currentEntry.name}{onDevice && ' · simple piano sound, the piano stays silent'}</p></div></section>
         <section className={`notes-panel ${showNotes ? 'is-open' : ''}`} aria-labelledby="notes-heading">
-          <div className="notes-panel-header"><div><h2 id="notes-heading">Falling notes</h2><p className="section-note">Notes from the original file, without drums.</p></div><button type="button" className="btn small" aria-expanded={showNotes} aria-controls="falling-notes" onClick={toggleNotes}>{showNotes ? 'Hide' : 'Show'}</button></div>
-          {showNotes && <div id="falling-notes"><FallingNotes songId={playerSongId} loadSong={loadSongNotes} getTime={notesTime} playing={notesPlaying} position={playerElapsed} /></div>}
+          <div className="notes-panel-header"><div><h2 id="notes-heading">Falling notes</h2><p className="section-note">Notes from the original file, without drums. Press the keys to play along.</p></div><button type="button" className="btn small" aria-expanded={showNotes} aria-controls="falling-notes" onClick={toggleNotes}>{showNotes ? 'Hide' : 'Show'}</button></div>
+          {showNotes && <div id="falling-notes"><FallingNotes songId={playerSongId} loadSong={loadSongNotes} getTime={notesTime} playing={notesPlaying} position={playerElapsed} onPress={pressKey} onRelease={releaseKey} /></div>}
         </section>
         <div className="queue-block">{queueContent}</div>
       </section>}

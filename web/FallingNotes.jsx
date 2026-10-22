@@ -4,13 +4,32 @@ import { HIGHEST_PITCH, LOWEST_PITCH, isBlackKey, keyLayout, longestNote, visibl
 const AHEAD_SECONDS = 3;
 const COLORS = { background: '#1d342c', guide: '#ffffff0d', hit: '#d8e4bc55', white: '#d8e4bc', black: '#9fbf8a', key: '#e9eedb', keyEdge: '#c8d3b9', blackKey: '#213c32', lit: '#b9d48f' };
 
-function draw(canvas, notes, longest, now) {
+const keyboardHeight = height => Math.min(84, Math.max(40, height * 0.22));
+
+// Finds the key under a point in CSS pixels; black keys sit on top of white keys.
+function keyAt(canvas, x, y) {
+  const width = canvas.clientWidth;
+  const height = canvas.clientHeight;
+  const keyHeight = keyboardHeight(height);
+  const roll = height - keyHeight;
+  if (y < roll || y > height || x < 0 || x > width) return null;
+  const keys = [...keyLayout(width)];
+  const depth = (y - roll) / keyHeight;
+  const black = depth < 0.6 && keys.find(([, key]) => key.black && x >= key.x && x < key.x + key.width);
+  const match = black || keys.find(([, key]) => !key.black && x >= key.x && x < key.x + key.width);
+  if (!match) return null;
+  const [pitch, key] = match;
+  const along = Math.min(1, depth / (key.black ? 0.6 : 1));
+  return { pitch, velocity: Math.round(45 + 82 * along) };
+}
+
+function draw(canvas, notes, longest, now, pressed = new Set()) {
   const context = canvas.getContext('2d');
   const ratio = window.devicePixelRatio || 1;
   const width = canvas.width / ratio;
   const height = canvas.height / ratio;
   context.setTransform(ratio, 0, 0, ratio, 0, 0);
-  const keyHeight = Math.min(84, Math.max(40, height * 0.22));
+  const keyHeight = keyboardHeight(height);
   const roll = height - keyHeight;
   const keys = keyLayout(width);
   context.fillStyle = COLORS.background;
@@ -19,7 +38,7 @@ function draw(canvas, notes, longest, now) {
   for (let pitch = LOWEST_PITCH; pitch <= HIGHEST_PITCH; pitch += 1) {
     if (pitch % 12 === 0) context.fillRect(keys.get(pitch).x, 0, 1, roll);
   }
-  const lit = new Set();
+  const lit = new Set(pressed);
   const visible = notes ? visibleNotes(notes, now, AHEAD_SECONDS, longest) : [];
   for (const black of [false, true]) {
     context.fillStyle = black ? COLORS.black : COLORS.white;
@@ -55,8 +74,11 @@ function draw(canvas, notes, longest, now) {
   }
 }
 
-export default function FallingNotes({ songId, loadSong, getTime, playing, position }) {
+export default function FallingNotes({ songId, loadSong, getTime, playing, position, onPress, onRelease }) {
   const canvasRef = useRef(null);
+  const pointers = useRef(new Map());
+  const pressed = useRef(new Set());
+  const redraw = useRef(() => {});
   const timeRef = useRef(getTime);
   timeRef.current = getTime;
   const [song, setSong] = useState({ id: '', notes: null, longest: 0, error: '' });
@@ -74,7 +96,8 @@ export default function FallingNotes({ songId, loadSong, getTime, playing, posit
 
   useEffect(() => {
     const canvas = canvasRef.current;
-    const render = () => draw(canvas, song.notes, song.longest, timeRef.current());
+    const render = () => draw(canvas, song.notes, song.longest, timeRef.current(), pressed.current);
+    redraw.current = render;
     const resize = () => {
       const ratio = window.devicePixelRatio || 1;
       canvas.width = Math.round(canvas.clientWidth * ratio);
@@ -90,12 +113,48 @@ export default function FallingNotes({ songId, loadSong, getTime, playing, posit
   }, [song, playing]);
 
   useEffect(() => {
-    if (!playing) draw(canvasRef.current, song.notes, song.longest, timeRef.current());
+    if (!playing) draw(canvasRef.current, song.notes, song.longest, timeRef.current(), pressed.current);
   }, [position, playing, song]);
+
+  const handlers = useRef({});
+  handlers.current = { onPress, onRelease };
+  function hold(pointerId, key) {
+    const previous = pointers.current.get(pointerId);
+    if (previous?.pitch === key?.pitch) return;
+    if (previous) {
+      pointers.current.delete(pointerId);
+      if (![...pointers.current.values()].some(item => item.pitch === previous.pitch)) {
+        pressed.current.delete(previous.pitch);
+        handlers.current.onRelease?.(previous.pitch);
+      }
+    }
+    if (key) {
+      pointers.current.set(pointerId, key);
+      if (!pressed.current.has(key.pitch)) {
+        pressed.current.add(key.pitch);
+        handlers.current.onPress?.(key.pitch, key.velocity);
+      }
+    }
+    if (!playing) redraw.current();
+  }
+  const point = event => {
+    const box = event.currentTarget.getBoundingClientRect();
+    return keyAt(event.currentTarget, event.clientX - box.left, event.clientY - box.top);
+  };
+  useEffect(() => () => {
+    for (const pitch of pressed.current) handlers.current.onRelease?.(pitch);
+    pressed.current.clear();
+    pointers.current.clear();
+  }, []);
 
   const message = !songId ? 'Choose a song to see its notes.' : song.error || (!song.notes ? 'Loading notes…' : !song.notes.length ? 'This song has no piano notes to show.' : '');
   return <div className="falling-notes">
-    <canvas ref={canvasRef} aria-hidden="true" />
+    <canvas ref={canvasRef} aria-hidden="true"
+      onPointerDown={event => { const key = point(event); if (!key) return; event.preventDefault(); try { event.currentTarget.setPointerCapture(event.pointerId); } catch {} hold(event.pointerId, key); }}
+      onPointerMove={event => { if (pointers.current.has(event.pointerId)) hold(event.pointerId, point(event)); }}
+      onPointerUp={event => hold(event.pointerId, null)}
+      onPointerCancel={event => hold(event.pointerId, null)}
+      onLostPointerCapture={event => hold(event.pointerId, null)} />
     {message && <p className="falling-notes-message" role={song.error ? 'alert' : undefined}>{message}</p>}
   </div>;
 }

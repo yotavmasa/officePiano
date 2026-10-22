@@ -100,6 +100,8 @@ export function useLocalListener(loadSong, onEnd) {
   }, []);
 
   const now = useCallback(() => engine.current?.position ?? 0, []);
+  const press = useCallback((pitch, velocity) => piano().press(pitch, velocity), [piano]);
+  const release = useCallback(pitch => engine.current?.release(pitch), []);
 
-  return { state, song, position, duration, loading, volume, listen, pause, resume, stop, seek, setVolume, now };
+  return { state, song, position, duration, loading, volume, listen, pause, resume, stop, seek, setVolume, now, press, release };
 }

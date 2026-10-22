@@ -1999,3 +1999,4 @@ h2,
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
   .context-menu, .bulk-bar, .queue-bulk { animation: none; }
 }
+.falling-notes canvas { touch-action: pan-y; cursor: pointer; }

@@ -76,6 +76,7 @@ export class LocalPiano {
     this.state = 'stopped';
     this.volume = 0.8;
     this.voices = new Set();
+    this.held = new Map();
     this.timer = null;
     this.nextIndex = 0;
     this.startedAt = 0;
@@ -205,6 +206,26 @@ export class LocalPiano {
       oscillator.start(start);
       oscillator.stop(silent);
     }
+    return voice;
+  }
+
+  // A key pressed by hand sounds until release() or its natural decay.
+  press(pitch, velocity) {
+    this.unlock();
+    this.release(pitch);
+    this.held.set(pitch, this.voice({ pitch, velocity, duration: 30 }, this.context.currentTime));
+  }
+
+  release(pitch) {
+    const voice = this.held.get(pitch);
+    if (!voice) return;
+    this.held.delete(pitch);
+    const now = this.context.currentTime;
+    voice.envelope.gain.cancelScheduledValues(now);
+    voice.envelope.gain.setTargetAtTime(0, now, RELEASE_SECONDS);
+    for (const oscillator of voice.oscillators) {
+      try { oscillator.stop(now + RELEASE_SECONDS * 5); } catch {}
+    }
   }
 
   halt() {
@@ -220,5 +241,6 @@ export class LocalPiano {
       }
     }
     this.voices.clear();
+    this.held.clear();
   }
 }
