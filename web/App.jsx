@@ -603,11 +603,17 @@ function App() {
     if (onDevice) return songAt(index) && listenHere(songAt(index), index);
     return queueAction('play', { index });
   }
-  function playSong(song, { showPlayer = true } = {}) {
+  async function playSong(song, { showPlayer = true } = {}) {
     if (!onDevice) return queueAction('play', { song_id: song.id }, '', showPlayer);
-    const index = queueIds.indexOf(song.id);
-    listenHere(song, index >= 0 ? index : null);
+    let index = queueIds.indexOf(song.id);
+    if (index < 0) {
+      // Match piano playback: a song from outside the queue joins its end so it shows as Now playing.
+      const result = await queueAction('add', { song_id: song.id });
+      if (!result) return;
+      index = result.queue.song_ids.length - 1;
+    }
     if (showPlayer) navigate('player');
+    await listenHere(song, index);
   }
   async function chooseOutput(next) {
     if (next === output) return;
