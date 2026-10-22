@@ -186,6 +186,19 @@ class EngineTests(unittest.TestCase):
         self.assertFalse(result['playing'])
         self.assertEqual(result['seconds'], 0)
 
+    def test_note_plays_single_keys_only_when_song_is_not_playing(self):
+        self.assertFalse(self.engine.command({'action': 'note', 'pitch': 20, 'velocity': 90, 'on': True, 'device': self.identity})['ok'])
+        self.assertFalse(self.engine.command({'action': 'note', 'pitch': 60, 'velocity': 90, 'on': 1, 'device': self.identity})['ok'])
+        self.assertTrue(self.engine.command({'action': 'note', 'pitch': 60, 'velocity': 90, 'on': True, 'device': self.identity})['ok'])
+        self.assertTrue(self.engine.command({'action': 'note', 'pitch': 60, 'velocity': 90, 'on': False, 'device': self.identity})['ok'])
+        port = self.backend.ports[-1]
+        self.assertEqual([(msg.type, msg.note) for msg in port.messages if msg.type in ('note_on', 'note_off')][-2:], [('note_on', 60), ('note_off', 60)])
+        self.assertFalse(self.engine.active_notes)
+        self.play()
+        refused = self.engine.command({'action': 'note', 'pitch': 62, 'velocity': 90, 'on': True, 'device': self.identity})
+        self.assertFalse(refused['ok'])
+        self.assertTrue(self.engine.status()['playing'])
+
     def test_mute_suppresses_note_on_without_scaling(self):
         port = self.play()
         self.assertTrue(self.engine.command({'action': 'volume', 'value': 0})['ok'])

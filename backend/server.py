@@ -329,11 +329,13 @@ class RequestHandler:
                 else:
                     with LOCK:
                         if self.path == '/api/control':
-                            if request.get('action') not in ('play', 'pause', 'stop', 'volume', 'seek'):
+                            if request.get('action') not in ('play', 'pause', 'stop', 'volume', 'seek', 'note'):
                                 raise ValueError('Invalid playback command')
+                            if request.get('action') == 'note':
+                                request = {key: request.get(key) for key in ('action', 'pitch', 'velocity', 'on', 'device')}
                             if request.get('action') == 'seek' and (not SONG_ID or request.get('song_id') != SONG_ID):
                                 raise ValueError('The song changed. Try the timeline again.')
-                            if request.get('action') == 'play' and not request.get('device'):
+                            if request.get('action') in ('play', 'note') and not request.get('device'):
                                 preferred = LIBRARY.get_setting('preferred_device', '')
                                 for device in midi({'action': 'status'}).get('devices', []):
                                     if device_match(device, preferred):

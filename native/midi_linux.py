@@ -485,6 +485,17 @@ class MidiEngine:
                     self._volume()
                     if value == 0:
                         self._panic()
+                elif action == 'note':
+                    pitch, velocity, on = request.get('pitch'), request.get('velocity'), request.get('on')
+                    if type(pitch) is not int or not 21 <= pitch <= 108 or type(velocity) is not int or not 1 <= velocity <= 127 or type(on) is not bool:
+                        raise ValueError('Choose a valid piano key.')
+                    if self.playing:
+                        raise ValueError('Pause the song to play keys on the piano.')
+                    self._choose(request.get('device'))
+                    if not on:
+                        self._send([mido.Message('note_off', note=pitch, velocity=0)])
+                    elif self.volume:
+                        self._send([mido.Message('note_on', note=pitch, velocity=velocity)])
                 elif action == 'status':
                     if self.bluetooth:
                         self.bluetooth.scan()

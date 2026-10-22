@@ -152,3 +152,19 @@ test('playback can start partway through a song', () => {
     mock.timers.reset();
   }
 });
+
+test('press holds a key until release and replaces a repeated press', () => {
+  const context = fakeContext();
+  const piano = new LocalPiano({ createContext: () => context });
+  piano.press(60, 100);
+  assert.equal(piano.held.size, 1);
+  assert.equal(context.starts.length, 1);
+  piano.press(60, 80);
+  assert.equal(piano.held.size, 1);
+  assert.equal(context.starts.length, 2);
+  context.currentTime = 1;
+  piano.release(60);
+  piano.release(61);
+  assert.equal(piano.held.size, 0);
+  assert.ok(context.stops.some(time => time > 1 && time < 2));
+});

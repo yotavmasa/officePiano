@@ -376,11 +376,14 @@ final class PianoBluetooth: NSObject, CBCentralManagerDelegate, CBPeripheralDele
 }
 let bluetooth = PianoBluetooth()
 func sendVolume() throws {
-    let target = endpoint
-    guard target != 0 else { return }
     var bytes: [UInt8] = []
     let value = UInt8((volume * 127 + 50) / 100)
     for channel in 0..<16 { bytes += [0xB0 | UInt8(channel), 7, value, 0xB0 | UInt8(channel), 39, 0] }
+    try sendBytes(bytes)
+}
+func sendBytes(_ bytes: [UInt8]) throws {
+    let target = endpoint
+    guard target != 0 else { return }
     let storage = UnsafeMutableRawPointer.allocate(byteCount: 1024, alignment: MemoryLayout<MIDIPacketList>.alignment)
     defer { storage.deallocate() }
     let list = storage.bindMemory(to: MIDIPacketList.self, capacity: 1)
@@ -519,6 +522,21 @@ func handle(_ line: String) {
             volume = value
             try sendVolume()
             if value == 0 { panic() }
+        case "note":
+            guard let pitch = request["pitch"] as? Int, (21...108).contains(pitch),
+                  let velocity = request["velocity"] as? Int, (1...127).contains(velocity),
+                  let on = request["on"] as? Bool else { throw Failure(message: "Choose a valid piano key") }
+            if let p = player {
+                var playing: DarwinBoolean = false; MusicPlayerIsPlaying(p, &playing)
+                if playing.boolValue { throw Failure(message: "Pause the song to play keys on the piano") }
+            }
+            guard let id = request["device"] as? UInt32,
+                  destinations().contains(where: { ($0["id"] as? Int) == Int(id) }) else {
+                throw Failure(message: "Connect the piano to play its keys")
+            }
+            if endpoint != id { stop(); endpoint = id; try sendVolume() }
+            if on && volume > 0 { try sendBytes([0x90, UInt8(pitch), UInt8(velocity)]) }
+            else if !on { try sendBytes([0x80, UInt8(pitch), 0]) }
         case "stop": stop()
         case "status": break
         default: throw Failure(message: "Unknown action")
