@@ -142,16 +142,21 @@ class RecognitionTests(unittest.TestCase):
 
 
 class ManualItunesTests(unittest.TestCase):
-    def test_chosen_result_is_saved_as_a_manual_edit(self):
+    def test_edit_details_saves_a_chosen_cover_as_a_manual_edit(self):
         with tempfile.TemporaryDirectory() as folder:
             lib=Library(folder)
             song=lib.add(midi(60),'thoughts-on-ray-vibrations-woody-goss.mid')
             cover='https://is1-ssl.mzstatic.com/image/thumb/a/600x600bb.jpg'
-            with self.assertRaises(ValueError):lib.mutate({'action':'apply_itunes','song_id':song['id'],'title':'','artist':'','album':''})
-            result=lib.mutate({'action':'apply_itunes','song_id':song['id'],'title':'Thoughts on Ray','artist':'Woody Goss','album':'Rainbow Beach','artwork':cover})
+            with self.assertRaises(ValueError):lib.mutate({'action':'edit_song','song_id':song['id'],'name':'X','artist':'','album':'','artwork':5})
+            result=lib.mutate({'action':'edit_song','song_id':song['id'],'name':'Thoughts on Ray','artist':'Woody Goss','album':'Rainbow Beach','artwork':cover})
             saved=next(item for item in result['songs'] if item['id']==song['id'])
             self.assertEqual((saved['name'],saved['artist'],saved['album'],saved['metadata_edited']),('Thoughts on Ray','Woody Goss','Rainbow Beach',1))
             self.assertEqual((saved['recognition']['artwork'],saved['recognition']['original_name']),(cover,'thoughts-on-ray-vibrations-woody-goss.mid'))
+            removed=lib.mutate({'action':'edit_song','song_id':song['id'],'name':'Thoughts on Ray','artist':'Woody Goss','album':'','artwork':''})
+            again=next(item for item in removed['songs'] if item['id']==song['id'])
+            self.assertEqual((again['recognition']['artwork'],again['recognition']['original_name']),('','thoughts-on-ray-vibrations-woody-goss.mid'))
+            kept=lib.mutate({'action':'edit_song','song_id':song['id'],'name':'Thoughts','artist':'','album':''})
+            self.assertEqual(next(item for item in kept['songs'] if item['id']==song['id'])['recognition']['artwork'],'')
             self.assertIsNone(lib.pending_recognition())
             lib.db.close()
 
