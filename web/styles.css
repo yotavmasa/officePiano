@@ -2093,3 +2093,5 @@ a { color: var(--indigo); }
 .adaptation-mode.unavailable[data-reason] { cursor: help; }
 .adaptation-mode.unavailable[data-reason] { opacity: 1; }
 .adaptation-mode.unavailable[data-reason] > * { opacity: .55; }
+.mini-art { overflow: hidden; }
+.song-row-cover { display: block; width: 100%; height: 100%; object-fit: cover; }

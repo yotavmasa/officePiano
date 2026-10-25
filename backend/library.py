@@ -462,7 +462,8 @@ class Library:
                 metadata['recognition'] = {'matched': False}
                 self.db.execute('UPDATE songs SET metadata=? WHERE id=?', (json.dumps(metadata), identity))
                 return None
-            metadata['recognition'] = {'matched': True, 'original_name': row['name'], 'source': found.get('source', '')}
+            metadata['recognition'] = {'matched': True, 'original_name': row['name'], 'source': found.get('source', ''),
+                                       'artwork': found.get('url', '') if isinstance(found.get('url'), str) else ''}
             self.db.execute('UPDATE songs SET metadata=? WHERE id=?', (json.dumps(metadata), identity))
             if title != row['name']:
                 self._rename(row, title)

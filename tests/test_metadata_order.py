@@ -103,10 +103,11 @@ class RecognitionTests(unittest.TestCase):
         edited=self.lib.add(midi(61),'Edited.mid')
         self.lib.mutate({'action':'edit_song','song_id':edited['id'],'name':'My name','artist':'','album':''})
         self.assertEqual(self.lib.pending_recognition()['id'],song['id'])
-        found={'title':'Tee Time','artist':'Vulfpeck','album':'Mr. Finish Line','source':'Apple iTunes'}
+        found={'title':'Tee Time','artist':'Vulfpeck','album':'Mr. Finish Line','source':'Apple iTunes','url':'https://is1-ssl.mzstatic.com/image/thumb/a/600x600bb.jpg'}
         renamed=self.lib.apply_recognition(song['id'],found)
         self.assertEqual((renamed['name'],renamed['artist'],renamed['album']),('Tee Time','Vulfpeck','Mr. Finish Line'))
         self.assertEqual(renamed['recognition']['original_name'],'tee-time-vulfpeck-tee-time.mid')
+        self.assertEqual(renamed['recognition']['artwork'],found['url'])
         self.assertTrue((Path(self.temp.name)/'data'/'songs'/self.lib.select(song['id'])[1]['file_name']).exists())
         self.assertIsNone(self.lib.apply_recognition(song['id'],{'title':'Other'}))
         self.assertEqual(self.lib.select(song['id'])[1]['name'],'Tee Time')
