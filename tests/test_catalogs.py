@@ -80,7 +80,7 @@ class CatalogTests(unittest.TestCase):
 
     def test_all_sources_and_legacy_both(self):
         result = {'results': [], 'has_more': False}
-        with patch.object(discovery.bitmidi, 'search', return_value=result), patch.object(discovery.freemidi, 'search', return_value=result), patch.object(discovery.bushgrafts, 'search', return_value=result) as jazz, patch.object(discovery.kunstderfuge, 'search', return_value=result) as classical:
+        with patch.object(discovery.maestro, 'available', return_value=False), patch.object(discovery.bitmidi, 'search', return_value=result), patch.object(discovery.freemidi, 'search', return_value=result), patch.object(discovery.bushgrafts, 'search', return_value=result) as jazz, patch.object(discovery.kunstderfuge, 'search', return_value=result) as classical:
             self.assertEqual(len(discovery.search('test', source='all')['sources']), 4)
             jazz.reset_mock(); classical.reset_mock()
             self.assertEqual(len(discovery.search('test', source='both')['sources']), 2)
@@ -94,3 +94,59 @@ class CatalogTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class MaestroTests(unittest.TestCase):
+    def setUp(self):
+        import io, tempfile
+        from pathlib import Path
+        import mido
+        from backend import maestro
+        self.maestro = maestro
+        self.temp = tempfile.TemporaryDirectory()
+        folder = Path(self.temp.name) / 'maestro'
+        (folder / '2018').mkdir(parents=True)
+        def midi(note):
+            score = mido.MidiFile(); track = mido.MidiTrack(); score.tracks.append(track)
+            track.extend([mido.Message('note_on', note=note, velocity=64), mido.Message('note_off', note=note, time=480)])
+            out = io.BytesIO(); score.save(file=out); return out.getvalue()
+        (folder / '2018' / 'a.midi').write_bytes(midi(60))
+        (folder / '2018' / 'b.midi').write_bytes(midi(62))
+        (folder / '2018' / 'c.midi').write_bytes(midi(64))
+        (folder / 'maestro-v3.0.0.csv').write_text('canonical_composer,canonical_title,split,year,midi_filename,audio_filename,duration\n'
+            'Franz Liszt,La Campanella,train,2018,2018/a.midi,,301.5\n'
+            'Franz Liszt,La Campanella,train,2018,2018/b.midi,,288.0\n'
+            'Frédéric Chopin,Ballade No. 1,train,2018,2018/c.midi,,560.0\n', encoding='utf-8')
+        self.patch = patch.object(maestro, 'FOLDER', folder)
+        self.patch.start()
+        maestro.ENTRIES.update(path=None, mtime=None, rows=[])
+
+    def tearDown(self):
+        self.patch.stop(); self.temp.cleanup()
+        self.maestro.ENTRIES.update(path=None, mtime=None, rows=[])
+
+    def test_search_labels_performances_and_downloads_locally(self):
+        result = self.maestro.search('lizst campanella')
+        self.assertEqual([r['name'] for r in result['results']], ['Franz Liszt — La Campanella (2018 performance, 5:01)', 'Franz Liszt — La Campanella (2018 performance, 4:48)'])
+        self.assertTrue(all(r['piano_only'] for r in result['results']))
+        data, song = self.maestro.download(result['results'][0]['url'])
+        self.assertTrue(data.startswith(b'MThd'))
+        self.assertEqual(song['name'], 'Franz Liszt — La Campanella (2018 performance, 5:01)')
+        self.assertEqual(self.maestro.search('chopin')['results'][0]['name'], 'Frédéric Chopin — Ballade No. 1')
+
+    def test_only_listed_local_files_can_be_downloaded(self):
+        for url in ['https://magenta.withgoogle.com/datasets/maestro#../maestro-v3.0.0.csv', 'https://magenta.withgoogle.com/datasets/maestro#2018/missing.midi',
+                    'http://magenta.withgoogle.com/datasets/maestro#2018/a.midi', 'https://evil.test/datasets/maestro#2018/a.midi',
+                    'https://magenta.withgoogle.com/datasets/maestro?x=1#2018/a.midi']:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                self.maestro.download(url)
+
+    def test_all_sources_skip_maestro_until_installed(self):
+        empty = {'results': [], 'has_more': False}
+        with patch.object(self.maestro, 'available', return_value=False), patch.object(discovery.bitmidi, 'search', return_value=empty), \
+             patch.object(discovery.freemidi, 'search', return_value=empty), patch.object(discovery.bushgrafts, 'search', return_value=empty), \
+             patch.object(discovery.kunstderfuge, 'search', return_value=empty):
+            self.assertNotIn('maestro', discovery.search('test', source='all')['sources'])
+            with patch.object(self.maestro, 'FOLDER', self.maestro.FOLDER / 'missing'):
+                with self.assertRaises(ValueError):
+                    discovery.search('test', source='maestro')

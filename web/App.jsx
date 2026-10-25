@@ -73,7 +73,7 @@ function reorderedSongIds(fullIds, visibleIds, from, to) {
 const safeSource = source => {
   try {
     const url = new URL(source);
-    return url.protocol === 'https:' && ['bitmidi.com', 'www.bitmidi.com', 'freemidi.org', 'www.freemidi.org', 'bushgrafts.com', 'www.bushgrafts.com', 'kunstderfuge.com', 'www.kunstderfuge.com'].includes(url.hostname) ? url.href : null;
+    return url.protocol === 'https:' && ['bitmidi.com', 'www.bitmidi.com', 'freemidi.org', 'www.freemidi.org', 'bushgrafts.com', 'www.bushgrafts.com', 'kunstderfuge.com', 'www.kunstderfuge.com', 'magenta.withgoogle.com'].includes(url.hostname) ? url.href : null;
   } catch { return null; }
 };
 
@@ -84,14 +84,16 @@ const sourceDescriptions = {
   freemidi: 'FreeMidi: songs across many artists and genres.',
   bushgrafts: 'Bushgrafts: Doug McKenzie’s jazz piano performances, including solo, duet, and trio recordings.',
   kunstderfuge: 'Kunst der Fuge: classical music by composer, including piano works and other instruments. Download limits may apply.',
+  maestro: 'MAESTRO: about 1,300 concert performances recorded on Yamaha Disklavier pianos, stored on this computer. By Google Magenta, CC BY-NC-SA 4.0.',
 };
-const sourceLabels = { bitmidi: 'BitMidi', freemidi: 'FreeMidi', bushgrafts: 'Bushgrafts', kunstderfuge: 'Kunst der Fuge' };
-const sourceKinds = { bushgrafts: 'Jazz', kunstderfuge: 'Classical' };
-const SOURCE_IDS = ['bitmidi', 'freemidi', 'bushgrafts', 'kunstderfuge'];
+const sourceLabels = { bitmidi: 'BitMidi', freemidi: 'FreeMidi', bushgrafts: 'Bushgrafts', kunstderfuge: 'Kunst der Fuge', maestro: 'MAESTRO' };
+const sourceKinds = { bushgrafts: 'Jazz', kunstderfuge: 'Classical', maestro: 'Performances' };
+const SOURCE_IDS = ['bitmidi', 'freemidi', 'bushgrafts', 'kunstderfuge', 'maestro'];
+const LEGACY_ALL_SOURCES = 'bitmidi,freemidi,bushgrafts,kunstderfuge';
 const providerName = source => {
   try {
     const host = new URL(source).hostname.replace(/^www\./, '');
-    return sourceLabels[{ 'bitmidi.com': 'bitmidi', 'freemidi.org': 'freemidi', 'bushgrafts.com': 'bushgrafts', 'kunstderfuge.com': 'kunstderfuge' }[host]] || 'MIDI source';
+    return sourceLabels[{ 'bitmidi.com': 'bitmidi', 'freemidi.org': 'freemidi', 'bushgrafts.com': 'bushgrafts', 'kunstderfuge.com': 'kunstderfuge', 'magenta.withgoogle.com': 'maestro' }[host]] || 'MIDI source';
   } catch { return sourceLabels[source] || 'MIDI source'; }
 };
 
@@ -323,7 +325,7 @@ function App() {
   // Ticked catalogs, sent as one comma-separated source; older single choices carry over.
   const [searchSources, setSearchSources] = useState(() => {
     const saved = storage.get('piano-search-sources') || storage.get('piano-search-source');
-    const list = saved === 'all' || !saved ? SOURCE_IDS : saved === 'both' ? ['bitmidi', 'freemidi'] : saved.split(',').filter(id => SOURCE_IDS.includes(id));
+    const list = saved === 'all' || !saved || saved === LEGACY_ALL_SOURCES ? SOURCE_IDS : saved === 'both' ? ['bitmidi', 'freemidi'] : saved.split(',').filter(id => SOURCE_IDS.includes(id));
     return list.length ? list : SOURCE_IDS;
   });
   const searchSource = searchSources.length === SOURCE_IDS.length ? 'all' : searchSources.join(',');

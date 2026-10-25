@@ -5,9 +5,10 @@ import urllib.parse
 from . import bitmidi
 from . import freemidi
 from .catalogs import bushgrafts, kunstderfuge
+from . import maestro
 
-PROVIDERS = {'bitmidi': bitmidi, 'freemidi': freemidi, 'bushgrafts': bushgrafts, 'kunstderfuge': kunstderfuge}
-LABELS = {'bitmidi': 'BitMidi', 'freemidi': 'FreeMidi', 'bushgrafts': 'Bushgrafts', 'kunstderfuge': 'Kunst der Fuge'}
+PROVIDERS = {'bitmidi': bitmidi, 'freemidi': freemidi, 'bushgrafts': bushgrafts, 'kunstderfuge': kunstderfuge, 'maestro': maestro}
+LABELS = {'bitmidi': 'BitMidi', 'freemidi': 'FreeMidi', 'bushgrafts': 'Bushgrafts', 'kunstderfuge': 'Kunst der Fuge', 'maestro': 'MAESTRO'}
 
 
 def search(query, page=1, source='bitmidi'):
@@ -16,7 +17,8 @@ def search(query, page=1, source='bitmidi'):
     if type(page) is not int or not 1 <= page <= 1000:
         raise ValueError('Choose a valid results page.')
     # One source, 'both', 'all', or a comma-separated selection such as 'bitmidi,kunstderfuge'.
-    names = list(PROVIDERS) if source == 'all' else ['bitmidi', 'freemidi'] if source == 'both' else list(dict.fromkeys(source.split(','))) if isinstance(source, str) else []
+    # 'all' skips MAESTRO until its local copy is installed; choosing it explicitly explains how to install it.
+    names = [name for name in PROVIDERS if name != 'maestro' or maestro.available()] if source == 'all' else ['bitmidi', 'freemidi'] if source == 'both' else list(dict.fromkeys(source.split(','))) if isinstance(source, str) else []
     if not names or len(names) > len(PROVIDERS) or any(name not in PROVIDERS for name in names):
         raise ValueError('Choose at least one MIDI source.')
     def fetch(name):
@@ -53,4 +55,6 @@ def download(url):
         return bushgrafts.download(url)
     if host in ('kunstderfuge.com', 'www.kunstderfuge.com'):
         return kunstderfuge.download(url)
+    if host in maestro.HOSTS:
+        return maestro.download(url)
     raise ValueError('Choose a song from one of the supported MIDI sources.')
