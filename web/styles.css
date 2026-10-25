@@ -1641,7 +1641,8 @@ h2,
   opacity: 1;
 }
 .art-column { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
-.spotify-cover-link { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 7px 8px; border-radius: 8px; background: #13163bd9; color: white; font-size: 12px; text-decoration: none; }
+.spotify-cover-link { display: block; padding: 7px 8px; border-radius: 8px; background: #13163bd9; color: white; font-size: 12px; text-decoration: none; }
+.spotify-cover-link span { display: flex; align-items: center; justify-content: center; gap: 8px; }
 .spotify-cover-link:hover { background: var(--ink); }
 
 .song-timeline { width:100%; min-width:0; height:28px; cursor:pointer; accent-color:var(--mint); }
