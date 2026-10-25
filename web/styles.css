@@ -875,7 +875,7 @@ dialog::backdrop {
     padding:23px;
     gap:0
   }
-  .art {
+  .art-column {
     display:none
   }
   .song-title {
@@ -1639,13 +1639,12 @@ h2,
 .album-cover.is-ready {
   opacity: 1;
 }
-.spotify-cover-link { position: absolute; inset: 0; z-index: 3; color: white; text-decoration: none; }
-.spotify-cover-link span { position: absolute; top: 10px; left: 10px; right: 10px; padding: 8px; border-radius: 8px; background: #13163bd9; text-align: center; font-size: 12px; }
-.spotify-cover-link:hover span { background: var(--ink); }
+.art-column { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.spotify-cover-link { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 7px 8px; border-radius: 8px; background: #13163bd9; color: white; font-size: 12px; text-decoration: none; }
+.spotify-cover-link:hover { background: var(--ink); }
 
 .song-timeline { width:100%; min-width:0; height:28px; cursor:pointer; accent-color:var(--mint); }
 .song-timeline:disabled { cursor:default; opacity:.5; }
-.spotify-cover-link span { top:auto; bottom:10px; display:flex; align-items:center; justify-content:center; gap:7px; }
 .spotify-cover-link svg { width:22px; height:22px; }
 
 .sheet-import { margin-bottom: 32px; }
@@ -1674,11 +1673,6 @@ h2,
   .sheet-piece { grid-template-columns: minmax(0, 1fr) 80px 28px; gap: 8px; }
 }
 
-.sort-handle { display: grid; place-items: center; width: 28px; height: 32px; padding: 2px; border-radius: 6px; cursor: grab; touch-action: none; user-select: none; color: var(--slate); }
-.sort-handle:not(:disabled):hover { background: var(--periwinkle-20); }
-.sort-handle:not(:disabled):active { cursor: grabbing; }
-.sort-handle:disabled { opacity: .35; cursor: default; }
-.sort-handle svg { width: 22px; height: 24px; }
 .queue-number { display: flex; align-items: center; gap: 4px; }
 .queue-number { flex-direction: column; gap: 0; }
 
@@ -1900,17 +1894,9 @@ h2,
 .queue-section .queue-status { margin-top: 2px; }
 .queue-section .queue-row > .row-actions { grid-column: auto; padding: 0; flex-wrap: nowrap; justify-content: flex-end; gap: 2px; }
 .queue-section .queue-row .row-actions button { width: 28px; height: 28px; }
-.queue-section .sort-handle { width: 22px; height: 28px; }
 .queue-section .queue-number { justify-content: center; }
-.queue-section .queue-number .sort-handle { display: none; }
-.queue-section .queue-row:hover .queue-number .sort-handle { display: grid; }
-.queue-section .queue-row:hover .queue-position { display: none; }
-@media (hover: none) { .queue-section .queue-number .sort-handle { display: grid; } .queue-section .queue-position { display: none; } }
-.song-row .mini-art .sort-handle { display: none; }
-.song-row:hover .mini-art .sort-handle { display: grid; }
-.song-row:hover .song-row-icon { display: none; }
 .song-row-icon { display: grid; place-items: center; }
-@media (hover: none) { .song-row .mini-art .sort-handle { display: grid; } .song-row-icon { display: none; } }
+.song-row.saved-song, .queue-section .queue-row { user-select: none; -webkit-user-select: none; touch-action: manipulation; }
 .library-nav button.is-drop-ready { outline: 1px dashed var(--periwinkle-40); outline-offset: -1px; }
 .library-nav button.is-drop-target { outline: 2px solid var(--indigo); background: var(--periwinkle-20); }
 
@@ -1930,6 +1916,11 @@ h2,
 .song-row.saved-song .song-name-button:hover:not(:disabled) { text-decoration: underline; }
 .song-check { display: grid; place-items: center; width: 22px; height: 22px; cursor: pointer; }
 .song-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--indigo); cursor: pointer; }
+/* Checkboxes appear on hover, on keyboard focus, and everywhere once something is selected; touch screens always show them. */
+@media (hover: hover) {
+  .song-check input { opacity: 0; transition: opacity 120ms ease; }
+  .song-row:hover .song-check input, .list-labels:hover .song-check input, .song-check input:focus-visible, .song-check input:checked, .song-check input:indeterminate, .has-bulk-bar .song-check input { opacity: 1; }
+}
 .song-more { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); opacity: .55; }
 .song-row.saved-song:hover .song-more, .song-more:focus-visible, .song-more[aria-expanded="true"] { opacity: 1; }
 .song-more:hover { background: var(--periwinkle-20); color: var(--forest); }
@@ -2137,3 +2128,7 @@ html { scrollbar-gutter: stable; }
 .player-fit > .notes-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
 .player-fit #falling-notes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .player-fit .falling-notes { flex: 1; height: auto; min-height: 160px; }
+.bulk-library.new-library { width: 100%; border-style: dashed; color: var(--indigo); }
+.check-row + .new-library, .dialog-hint + .new-library { margin-top: 10px; }
+.new-library-form { display: flex; gap: 8px; margin-top: 4px; }
+.new-library-form .field { margin: 0; flex: 1; }
