@@ -880,7 +880,11 @@ function App() {
   }
 
   async function openAdaptation(requestedSongId, { applyNow = view === 'player' } = {}) {
-    const songId = typeof requestedSongId === 'string' ? requestedSongId : status?.song_id || '';
+    // The player's buttons edit the song it shows; on this computer that song isn't loaded on the piano,
+    // so the server only saves the setting and this device stops its playback when it's applied.
+    const fromPlayer = typeof requestedSongId !== 'string';
+    const songId = fromPlayer ? (onDevice ? deviceSong?.id : status?.song_id) || '' : requestedSongId;
+    const stopsDevice = fromPlayer && onDevice && applyNow;
     setAdaptationExpectedSongId(status?.song_id || '');
     const request = ++adaptationRequest.current;
     setAdaptationSongId(songId);
@@ -890,7 +894,7 @@ function App() {
     setAdaptationAttempted(false);
     setAdaptationMode(status?.adaptation?.settings?.mode || 'no_drums');
     setAdaptationParts([]);
-    setDialog({ type: 'adaptation', applyNow });
+    setDialog({ type: 'adaptation', applyNow: applyNow && !stopsDevice, stopsDevice });
     try {
       const data = await api(`/api/adaptation?song_id=${encodeURIComponent(songId)}`);
       if (request !== adaptationRequest.current) return;
@@ -926,7 +930,7 @@ function App() {
       parsedSongs.current.clear();
       local.forget();
       setSoundVersion(version => version + 1);
-      if (dialog?.applyNow && onDevice) local.stop();
+      if (dialog?.stopsDevice && local.song?.id === adaptationSongId) local.stop();
     }
   }
 
@@ -1415,7 +1419,7 @@ function App() {
         </div>}
       </>}
       {(adaptationError || adaptationAttempted && notice && !notice.success) && <p className="message visible" role="alert">{adaptationError || notice.text}</p>}
-      <p className="adaptation-stop-note">{`${adaptationSongId ? 'Saved for this song. ' : ''}${dialog.applyNow ? 'Applying stops playback.' : 'Takes effect the next time it plays.'}`}</p>
+      <p className="adaptation-stop-note">{`${adaptationSongId ? 'Saved for this song. ' : ''}${dialog.applyNow || dialog.stopsDevice ? 'Applying stops playback.' : 'Takes effect the next time it plays.'}`}</p>
       <div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => { adaptationRequest.current += 1; setDialog(null); }}>Cancel</button><button className="btn" disabled={busy || adaptationLoading || !adaptationData || adaptationMode === 'custom' && (!adaptationSongId || !adaptationParts.length) || adaptationMode === 'piano' && !!adaptationSongId && !hasPianoParts} onClick={applyAdaptation}>{dialog.applyNow ? 'Apply sound' : 'Save settings'}</button></div>
     </Dialog>}
 
