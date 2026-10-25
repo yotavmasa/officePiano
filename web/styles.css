@@ -2068,3 +2068,5 @@ a { color: var(--indigo); }
 .side-toggle svg { width: 14px; height: 14px; color: var(--slate); transition: transform 160ms ease; }
 .side-toggle:hover .eyebrow { color: var(--indigo); }
 @media (prefers-reduced-motion: reduce) { .side-toggle svg { transition: none; } }
+.player .player-record { color: var(--white); }
+.mini-player-art { color: var(--white); }
