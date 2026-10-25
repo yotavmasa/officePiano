@@ -26,6 +26,25 @@ class CatalogTests(unittest.TestCase):
         self.assertIsNone(result['results'][0]['piano_only'])
         download.assert_not_called()
 
+    def test_classical_search_finds_movements_by_work_name_stems_and_labels_versions(self):
+        site = Catalog('Classical', 'https://www.kunstderfuge.com', '/midi.htm', True)
+        sonatas = ('<p class="midi">Sonate No. 14 in c sharp minor, Op. 27 No. 2 \'Moonlight\'<br>'
+                   '<a href="/-/midi.asp?file=rolls/beethoven/s14_1_(nc)smythe.mid">MIDI</a> | 1. Adagio sostenuto</p>'
+                   '<p class="midi"><a href="/-/midi.asp?file=beethoven/s14_(c)oguri.mid">MIDI</a> | Sonate No. 14, Op. 27 No. 2</p>'
+                   '<p class="midi"><a href="/-/midi.asp?file=beethoven/s14_(c)hisamori.mid">MIDI</a> | Sonate No. 14, Op. 27 No. 2</p>'
+                   '<p class="midi">Organ<br><a href="/-/midi.asp?file=beethoven/organ_sonata_(c)x.mid">MIDI</a> | Sonata arrangement</p>')
+        pages = {'/midi.htm': '<a name="Composers"></a><a href="beethoven.htm">Beethoven</a><a href="debussy.htm">De Bussy</a><a name="Specials"></a>',
+                 '/beethoven.htm': sonatas, '/debussy.htm': ''}
+        with patch.object(site, 'page', side_effect=lambda url: pages[url.replace(site.base, '')]):
+            moonlight = site.search('moonlight sonata')
+            sonata = site.search('beethoven sonata')
+            stopword = site.search('de moonlight')
+        self.assertEqual([s['name'] for s in moonlight['results']], ["Beethoven — Sonate No. 14 in c sharp minor, Op. 27 No. 2 'Moonlight' — 1. Adagio sostenuto"])
+        self.assertEqual([s['name'] for s in sonata['results']][:3], ["Beethoven — Sonate No. 14 in c sharp minor, Op. 27 No. 2 'Moonlight' — 1. Adagio sostenuto",
+                                                                      'Beethoven — Sonate No. 14, Op. 27 No. 2 (Oguri)', 'Beethoven — Sonate No. 14, Op. 27 No. 2 (Hisamori)'])
+        self.assertTrue(sonata['results'][-1]['name'].startswith('Beethoven — Organ'))
+        self.assertEqual(stopword['total_matches'], 1)
+
     def test_rejects_external_redirects_and_non_midi_imports(self):
         site = Catalog('Jazz', 'https://bushgrafts.com', '/midi/')
         for url in ['https://bushgrafts.com.evil.test/jazz/a.mid', 'https://user@bushgrafts.com/jazz/a.mid', 'http://bushgrafts.com/jazz/a.mid', 'https://bushgrafts.com/jazz/../a.mid', 'https://bushgrafts.com/admin']:
