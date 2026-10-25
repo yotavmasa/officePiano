@@ -1932,8 +1932,8 @@ h2,
 .song-check input { width: 16px; height: 16px; margin: 0; accent-color: var(--indigo); cursor: pointer; }
 /* Checkboxes appear on hover, on keyboard focus, and everywhere once something is selected; touch screens always show them. */
 @media (hover: hover) {
-  .song-check { opacity: 0; transition: opacity 120ms ease; }
-  .song-row:hover .song-check, .list-labels:hover .song-check, .song-check:focus-within, .song-check:has(input:checked), .has-bulk-bar .song-check { opacity: 1; }
+  .song-check input { opacity: 0; transition: opacity 120ms ease; }
+  .song-row:hover .song-check input, .list-labels:hover .song-check input, .song-check input:focus-visible, .song-check input:checked, .song-check input:indeterminate, .has-bulk-bar .song-check input { opacity: 1; }
 }
 .song-more { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 8px; color: var(--muted); opacity: .55; }
 .song-row.saved-song:hover .song-more, .song-more:focus-visible, .song-more[aria-expanded="true"] { opacity: 1; }
