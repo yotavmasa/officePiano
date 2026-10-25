@@ -1993,16 +1993,22 @@ h2,
 .player { view-transition-name: now-playing; }
 .mini-player { view-transition-name: now-playing; }
 .player .art, .mini-player-art { view-transition-name: now-playing-art; }
-.player .song-title, .mini-player-title strong { view-transition-name: now-playing-title; }
-.queue-block, .queue-docked .queue-panel { view-transition-name: queue; }
-::view-transition-group(*) { animation-duration: 340ms; animation-timing-function: cubic-bezier(.2, .8, .2, 1); }
-::view-transition-old(root), ::view-transition-new(root) { animation-duration: 200ms; }
-::view-transition-group(now-playing) { background: var(--indigo); border-radius: 18px; overflow: clip; }
-::view-transition-old(now-playing) { animation: vt-fade-out 120ms ease-out both; }
-::view-transition-new(now-playing) { animation: vt-fade-in 200ms 140ms ease-out both; }
+.queue-block { view-transition-name: queue-inline; }
+.queue-docked .queue-panel { view-transition-name: queue-side; }
+::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 300ms; animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
+/* The player card morphs as a solid shape; its snapshots are cropped, never stretched. */
+::view-transition-group(now-playing) { background: var(--indigo); border-radius: var(--radius-card); overflow: clip; }
+::view-transition-old(now-playing), ::view-transition-new(now-playing) { width: 100%; height: 100%; object-fit: none; object-position: left top; }
+/* The queue changes shape too much to morph, so it fades out of the page while the side panel slides in.
+   :only-child limits these to entering or leaving; identical panels on both sides just crossfade. */
+::view-transition-old(queue-inline):only-child { animation: vt-fade-out 150ms linear both; }
+::view-transition-new(queue-inline):only-child { animation: vt-fade-in 200ms 100ms linear both; }
+::view-transition-new(queue-side):only-child { animation: vt-slide-in 300ms cubic-bezier(.2, 0, 0, 1) both; }
+::view-transition-old(queue-side):only-child { animation: vt-slide-out 220ms cubic-bezier(.4, 0, 1, 1) both; }
 @keyframes vt-fade-out { to { opacity: 0; } }
 @keyframes vt-fade-in { from { opacity: 0; } }
-::view-transition-old(now-playing-title), ::view-transition-new(now-playing-title) { height: 100%; object-fit: contain; object-position: left center; }
+@keyframes vt-slide-in { from { opacity: 0; transform: translateX(48px); } }
+@keyframes vt-slide-out { to { opacity: 0; transform: translateX(48px); } }
 @media (prefers-reduced-motion: reduce) {
   ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation: none !important; }
   .context-menu, .bulk-bar, .queue-bulk { animation: none; }
@@ -2049,7 +2055,9 @@ a { color: var(--indigo); }
 /* The falling-notes panel grows open and shrinks closed; the canvas fades in where View Transitions are missing. */
 .notes-panel { view-transition-name: notes-panel; }
 ::view-transition-group(notes-panel) { overflow: clip; border-radius: var(--radius-card); }
-::view-transition-old(notes-panel), ::view-transition-new(notes-panel) { height: auto; object-fit: none; object-position: top; }
-.falling-notes { animation: notes-open 260ms ease-out; }
+::view-transition-old(notes-panel), ::view-transition-new(notes-panel) { width: 100%; height: 100%; object-fit: none; object-position: left top; }
+@supports not (view-transition-name: none) {
+  .falling-notes { animation: notes-open 260ms ease-out; }
+}
 @keyframes notes-open { from { opacity: 0; transform: translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) { .falling-notes { animation: none; } }
