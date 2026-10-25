@@ -276,6 +276,7 @@ function App() {
   const [notice, setNotice] = useState(null);
   const [dialog, setDialog] = useState(null);
   const [selected, setSelected] = useState([]);
+  const [logoMissing, setLogoMissing] = useState(false);
   const [queueSelected, setQueueSelected] = useState([]);
   const [songMenu, setSongMenu] = useState(null);
   const menuReturn = useRef(null);
@@ -1204,7 +1205,7 @@ function App() {
 
   return <div className={`shell ${view !== 'player' ? 'with-mini-player' : ''} ${queueIsDocked ? 'queue-docked' : ''} ${view !== 'player' && view !== 'discover' && selectedIds.length ? 'has-bulk-bar' : ''}`}>
     <aside className="sidebar">
-      <div className="brand"><span className="brand-mark"><Icon name="piano" /></span>Office Piano</div>
+      <div className="brand">{logoMissing ? <><span className="brand-mark"><Icon name="piano" /></span>Office Piano</> : <div><img className="brand-logo" src="/assets/brand/cymphony-logo-full-purple.svg" alt="Cymphony" onError={() => setLogoMissing(true)} /><span className="brand-name">Office Piano</span></div>}</div>
       <nav className="nav" aria-label="Music">
         {[['player', 'Player', 'play', queueIds.length], ['all', 'All songs', 'grid', library.songs.filter(song => song.source_kind !== 'sheet').length], ['sheets', 'Sheet music', 'book', library.songs.filter(song => song.source_kind === 'sheet').length], ['favorites', 'Favorites', 'heart', library.songs.filter(song => song.favorite).length], ['discover', 'Discover', 'search']].map(([id, label, icon, count]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{label}{id === 'sheets' && <span className="nav-wip">WIP</span>}{count !== undefined && <span className="count">{count}</span>}</button>)}
       </nav>

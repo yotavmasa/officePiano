@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { HIGHEST_PITCH, LOWEST_PITCH, isBlackKey, keyLayout, longestNote, visibleNotes } from './fallingNotes.mjs';
 
 const AHEAD_SECONDS = 3;
-const COLORS = { background: '#1d342c', guide: '#ffffff0d', hit: '#d8e4bc55', white: '#d8e4bc', black: '#9fbf8a', key: '#e9eedb', keyEdge: '#c8d3b9', blackKey: '#213c32', lit: '#b9d48f' };
+const COLORS = { background: '#5151ca', guide: '#ffffff14', hit: '#55ffa2', white: '#c8c8f5', black: '#ff8dff', key: '#ffffff', keyEdge: '#c8c8f5', blackKey: '#13163b', lit: '#55ffa2' };
 
 const keyboardHeight = height => Math.min(84, Math.max(40, height * 0.22));
 
