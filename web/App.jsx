@@ -224,6 +224,17 @@ function ContextMenu({ x, y, label, items, onClose }) {
   </div>;
 }
 
+function NewLibraryRow({ busy, onCreate }) {
+  const [open, setOpen] = useState(false);
+  const [name, setName] = useState('');
+  if (!open) return <button type="button" className="bulk-library new-library" disabled={busy} onClick={() => setOpen(true)}><Icon name="plus" /><span>New library</span></button>;
+  const submit = async () => { if (name.trim() && await onCreate(name.trim())) { setName(''); setOpen(false); } };
+  return <div className="new-library-form">
+    <input className="field" aria-label="New library name" placeholder="Library name" maxLength="80" value={name} disabled={busy} autoFocus onChange={event => setName(event.target.value)} onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); submit(); } }} />
+    <button type="button" className="btn" disabled={busy || !name.trim()} onClick={submit}>Create</button>
+  </div>;
+}
+
 function EmptyState({ icon = 'note', title, description, button, onClick }) {
   return <div className="empty"><Icon name={icon} /><h3>{title}</h3><p>{description}</p>{button && <button className="btn light" onClick={onClick}>{button}</button>}</div>;
 }
@@ -1058,6 +1069,15 @@ function App() {
     const result = await eachSong(missing, songId => post('/api/library', { action: 'assign', song_id: songId, library_id: item.id, value: true }), `Added ${countSongs(missing.length)} to ${item.name}.`);
     if (result) setDialog(null);
   }
+  async function createLibraryWith(name, songIds) {
+    return run(async () => {
+      let data = await post('/api/library', { action: 'create', name });
+      const created = data.library?.libraries?.find(item => item.name === name);
+      if (!created) throw Error('The new library could not be found.');
+      for (const songId of songIds) data = await post('/api/library', { action: 'assign', song_id: songId, library_id: created.id, value: true });
+      return data;
+    }, songIds.length ? `Created ${name} with ${countSongs(songIds.length)}.` : `Created ${name}.`);
+  }
   async function deleteSongs(songIds) {
     const result = await eachSong(songIds, songId => post('/api/library', { action: 'delete', song_id: songId }));
     if (!result) return;
@@ -1501,7 +1521,7 @@ function App() {
       const result = await run(() => post('/api/library', { action: dialog.type === 'rename' ? 'rename' : 'create', name, library_id: dialog.libraryId }));
       if (result) setDialog(null);
     }}><label htmlFor="libraryName" className="dialog-label">Library name</label><input id="libraryName" className="field" placeholder="Quiet mornings" required maxLength="80" value={libraryName} onChange={event => setLibraryName(event.target.value)} autoFocus /><div className="dialog-actions"><button type="button" className="btn light" onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy}>{dialog.type === 'rename' ? 'Save name' : 'Create library'}</button></div></form></Dialog>}
-    {dialog?.type === 'assign' && <Dialog title="Save to a library" onClose={() => setDialog(null)}><p className="dialog-hint">{assignedSong?.name}</p>{library.libraries.length ? library.libraries.map(item => <label className="check-row" key={item.id}><input type="checkbox" disabled={busy} checked={(assignedSong?.library_ids || []).includes(item.id)} onChange={event => run(() => post('/api/library', { action: 'assign', song_id: assignedSong.id, library_id: item.id, value: event.target.checked }))} /><span>{item.name}</span></label>) : <p className="dialog-hint">Create a library with the + button in the sidebar first.</p>}<div className="dialog-actions"><button className="btn" onClick={() => setDialog(null)}>Done</button></div></Dialog>}
+    {dialog?.type === 'assign' && <Dialog title="Save to a library" onClose={() => setDialog(null)}><p className="dialog-hint">{assignedSong?.name}</p>{library.libraries.length ? library.libraries.map(item => <label className="check-row" key={item.id}><input type="checkbox" disabled={busy} checked={(assignedSong?.library_ids || []).includes(item.id)} onChange={event => run(() => post('/api/library', { action: 'assign', song_id: assignedSong.id, library_id: item.id, value: event.target.checked }))} /><span>{item.name}</span></label>) : null}<NewLibraryRow busy={busy} onCreate={name => createLibraryWith(name, [assignedSong.id])} /><div className="dialog-actions"><button className="btn" onClick={() => setDialog(null)}>Done</button></div></Dialog>}
     {dialog?.type === 'rename_song' && <Dialog key={dialog.songId} title="Edit details" closeDisabled={busy} onClose={closeEditDetails}><form onSubmit={async event => {
       event.preventDefault();
       const original = typeof assignedSong?.recognition?.artwork === 'string' ? assignedSong.recognition.artwork : '';
@@ -1537,7 +1557,7 @@ function App() {
     {dialog?.type === 'delete' && <Dialog title="Remove this song?" onClose={() => setDialog(null)}><p className="dialog-hint">{assignedSong?.name}</p><p className="dialog-hint">This removes the song from All songs, favorites, libraries, and the queue. If it is playing, playback stops. The MIDI is moved to the app’s trash folder, and you can undo.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={async () => { const song = assignedSong; const result = await run(() => post('/api/library', { action: 'delete', song_id: song.id })); if (result) { setDialog(null); setNotice({ text: 'Song removed.', success: true, undoSongIds: [song.id] }); } }}>Remove song</button></div></Dialog>}
     {dialog?.type === 'bulk_delete' && <Dialog title={`Remove ${countSongs(dialog.songIds.length)}?`} onClose={() => setDialog(null)}><p className="dialog-hint">This removes them from All songs, favorites, libraries, and the queue. If one is playing, playback stops. The MIDI files are moved to the app’s trash folder, and you can undo.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={() => deleteSongs(dialog.songIds)}>Remove {countSongs(dialog.songIds.length)}</button></div></Dialog>}
     {dialog?.type === 'delete_library' && (() => { const item = library.libraries.find(entry => entry.id === dialog.libraryId); return item && <Dialog title="Delete this library?" onClose={() => setDialog(null)}><p className="dialog-hint">{item.name}</p><p className="dialog-hint">The library is removed. Its songs stay in All songs, favorites, and the queue.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={() => deleteLibrary(item)}>Delete library</button></div></Dialog>; })()}
-    {dialog?.type === 'bulk_assign' && <Dialog title="Add to a library" onClose={() => setDialog(null)}><p className="dialog-hint">{countSongs(dialog.songIds.length)} selected</p>{library.libraries.length ? <div className="bulk-library-list">{library.libraries.map(item => <button key={item.id} type="button" className="bulk-library" disabled={busy} onClick={() => addSongsToLibrary(dialog.songIds, item)}><Icon name="folder" /><span>{item.name}</span></button>)}</div> : <p className="dialog-hint">Create a library with the + button in the sidebar first.</p>}<div className="dialog-actions"><button className="btn light" onClick={() => setDialog(null)}>Cancel</button></div></Dialog>}
+    {dialog?.type === 'bulk_assign' && <Dialog title="Add to a library" onClose={() => setDialog(null)}><p className="dialog-hint">{countSongs(dialog.songIds.length)} selected</p>{library.libraries.length ? <div className="bulk-library-list">{library.libraries.map(item => <button key={item.id} type="button" className="bulk-library" disabled={busy} onClick={() => addSongsToLibrary(dialog.songIds, item)}><Icon name="folder" /><span>{item.name}</span></button>)}<NewLibraryRow busy={busy} onCreate={async name => { const done = await createLibraryWith(name, dialog.songIds); if (done) setDialog(null); return done; }} /></div> : <div className="bulk-library-list"><NewLibraryRow busy={busy} onCreate={async name => { const done = await createLibraryWith(name, dialog.songIds); if (done) setDialog(null); return done; }} /></div>}<div className="dialog-actions"><button className="btn light" onClick={() => setDialog(null)}>Cancel</button></div></Dialog>}
     {menuLibrary && <ContextMenu x={songMenu.x} y={songMenu.y} label={`Actions for ${menuLibrary.name}`} items={libraryMenuItems(menuLibrary)} onClose={closeSongMenu} />}
     {menuSong && <ContextMenu x={songMenu.x} y={songMenu.y} label={`Actions for ${menuSong.name}`} items={songMenu.kind === 'queue' ? queueMenuItems(songMenu.index) : songMenuItems(menuSong)} onClose={closeSongMenu} />}
     {dialog?.type === 'remote' && <Dialog title="Music, from anywhere in the room." onClose={() => setDialog(null)}><p className="dialog-hint">Open this private link on a phone or another computer on the same office Wi-Fi. The piano computer sends the music and must stay awake.</p><a className="dialog-hint" style={{ display: 'block' }} href={status?.remote || '#'}>{status?.remote || 'Waiting for the piano connection…'}</a><div className="dialog-actions"><button className="btn" onClick={async () => {
