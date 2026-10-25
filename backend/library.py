@@ -371,6 +371,23 @@ class Library:
                 self._rename(row, name)
                 if action == 'edit_song':
                     self.db.execute('UPDATE songs SET artist=?,album=?,metadata_edited=1 WHERE id=?', (artist, album, identity))
+            elif action == 'apply_itunes':
+                # A person chose this Apple Music result, so it counts as a manual edit.
+                identity = request.get('song_id')
+                name = self._name(request.get('title'))
+                artist, album, cover = request.get('artist', ''), request.get('album', ''), request.get('artwork', '')
+                if any(not isinstance(value, str) or len(value.strip()) > 200 for value in (artist, album)) or not isinstance(cover, str) or len(cover) > 3000:
+                    raise ValueError('That Apple Music result is invalid.')
+                row = self.db.execute('SELECT * FROM songs WHERE id=? AND deleted=0', (identity,)).fetchone() if isinstance(identity, str) else None
+                if not row:
+                    raise ValueError('Choose a saved song.')
+                metadata = json.loads(row['metadata'])
+                previous = metadata.get('recognition', {})
+                metadata['recognition'] = {'matched': True, 'manual': True, 'source': 'Apple iTunes', 'artwork': cover,
+                                           'original_name': previous.get('original_name') or row['name']}
+                self._rename(row, name)
+                self.db.execute('UPDATE songs SET artist=?,album=?,metadata=?,metadata_edited=1 WHERE id=?',
+                                (artist.strip(), album.strip(), json.dumps(metadata), identity))
             elif action == 'rename':
                 identity = request.get('library_id')
                 name = self._name(request.get('name'))

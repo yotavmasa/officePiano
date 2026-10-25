@@ -290,6 +290,8 @@ class RequestHandler:
                 path, name = SHEETS.source(query.get('id', [''])[0])
                 safe_name = ''.join(c for c in name if c.isascii() and (c.isalnum() or c in ' ._-'))[:200] or 'sheet.pdf'
                 return self.reply(200, path.read_bytes(), mimetypes.guess_type(name)[0] or 'application/octet-stream', safe_name)
+            if request.path == '/api/itunes-search':
+                return self.reply(200, {'ok': True, 'results': artwork.candidates(query.get('q', [''])[0])})
             if request.path == '/api/song-playback':
                 # The same adapted copy the piano plays; rendering stays outside the MIDI lock.
                 song_id = query.get('song_id', [''])[0]
@@ -398,8 +400,10 @@ class RequestHandler:
                             song = load_song(request.get('song_id'))
                             result = dict(ok=True, song=song)
                         elif self.path == '/api/library':
+                            if request.get('action') == 'apply_itunes' and request.get('artwork') and not artwork.artwork_url(request.get('artwork')):
+                                raise ValueError('That Apple Music cover is invalid.')
                             library = LIBRARY.mutate(request)
-                            if request.get('action') in ('rename_song', 'edit_song') and request.get('song_id') == SONG_ID:
+                            if request.get('action') in ('rename_song', 'edit_song', 'apply_itunes') and request.get('song_id') == SONG_ID:
                                 renamed = next(song for song in library['songs'] if song['id'] == SONG_ID)
                                 NAME = renamed['name']
                                 ARTWORK_SONG_ID = ''

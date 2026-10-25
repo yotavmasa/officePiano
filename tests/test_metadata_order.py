@@ -139,3 +139,35 @@ class RecognitionTests(unittest.TestCase):
             self.assertEqual(artwork.recognize({'name':'tee-time-vulfpeck-tee-time.mid'}),({},False))
         finally:
             artwork._search=original
+
+
+class ManualItunesTests(unittest.TestCase):
+    def test_chosen_result_is_saved_as_a_manual_edit(self):
+        with tempfile.TemporaryDirectory() as folder:
+            lib=Library(folder)
+            song=lib.add(midi(60),'thoughts-on-ray-vibrations-woody-goss.mid')
+            cover='https://is1-ssl.mzstatic.com/image/thumb/a/600x600bb.jpg'
+            with self.assertRaises(ValueError):lib.mutate({'action':'apply_itunes','song_id':song['id'],'title':'','artist':'','album':''})
+            result=lib.mutate({'action':'apply_itunes','song_id':song['id'],'title':'Thoughts on Ray','artist':'Woody Goss','album':'Rainbow Beach','artwork':cover})
+            saved=next(item for item in result['songs'] if item['id']==song['id'])
+            self.assertEqual((saved['name'],saved['artist'],saved['album'],saved['metadata_edited']),('Thoughts on Ray','Woody Goss','Rainbow Beach',1))
+            self.assertEqual((saved['recognition']['artwork'],saved['recognition']['original_name']),(cover,'thoughts-on-ray-vibrations-woody-goss.mid'))
+            self.assertIsNone(lib.pending_recognition())
+            lib.db.close()
+
+    def test_candidates_list_choices_and_report_outages(self):
+        item={'kind':'song','trackName':'Tee Time','artistName':'Vulfpeck','collectionName':'Mr. Finish Line',
+              'artworkUrl100':'https://is1-ssl.mzstatic.com/image/thumb/a/100x100bb.jpg','trackViewUrl':'https://music.apple.com/us/album/x/1?i=2'}
+        original=artwork._search
+        artwork.QUERY_CACHE.clear()
+        try:
+            artwork._search=lambda term:[item,{'kind':'podcast'}]
+            results=artwork.candidates('tee time')
+            self.assertEqual([(r['title'],r['artist'],r['artwork'].endswith('600x600bb.jpg')) for r in results],[('Tee Time','Vulfpeck',True)])
+            with self.assertRaises(ValueError):artwork.candidates('x'*121)
+            artwork.QUERY_CACHE.clear()
+            def offline(term):raise OSError('offline')
+            artwork._search=offline
+            with self.assertRaises(ValueError):artwork.candidates('tee time')
+        finally:
+            artwork._search=original;artwork.QUERY_CACHE.clear()

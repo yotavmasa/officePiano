@@ -2095,3 +2095,11 @@ a { color: var(--indigo); }
 .adaptation-mode.unavailable[data-reason] > * { opacity: .55; }
 .mini-art { overflow: hidden; }
 .song-row-cover { display: block; width: 100%; height: 100%; object-fit: cover; }
+.itunes-search { display: flex; gap: 8px; margin: 4px 0 12px; }
+.itunes-search .field { margin: 0; flex: 1; }
+.itunes-results { display: grid; gap: 6px; max-height: 340px; overflow-y: auto; margin-bottom: 10px; }
+.itunes-result { display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: var(--radius-sm); text-align: left; }
+.itunes-result:hover:not(:disabled), .itunes-result:focus-visible { background: var(--periwinkle-20); }
+.itunes-result img, .itunes-cover-empty { flex: 0 0 44px; width: 44px; height: 44px; border-radius: var(--radius-sm); object-fit: cover; background: var(--periwinkle-20); display: grid; place-items: center; color: var(--indigo); }
+.itunes-result strong { display: block; font-size: 14px; font-weight: 500; color: var(--ink); }
+.itunes-result small { display: block; font-size: 12px; color: var(--slate); }

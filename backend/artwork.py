@@ -178,6 +178,28 @@ def _search(term):
 
 
 
+def candidates(term):
+    """Songs matching a typed search, for a person to choose from; nothing is applied automatically."""
+    if not isinstance(term, str) or not term.strip() or len(term) > 120:
+        raise ValueError('Search for a song title or artist (up to 120 characters).')
+    try:
+        items = _cached_search(term.strip())
+    except (ValueError, TypeError, UnicodeError, urllib.error.URLError, TimeoutError, OSError):
+        raise ValueError('Apple Music search is unavailable. Check the internet connection and try again.') from None
+    results = []
+    for item in items:
+        if not isinstance(item, dict) or item.get('kind') != 'song':
+            continue
+        title, artist, album = item.get('trackName'), item.get('artistName'), item.get('collectionName')
+        url = item.get('artworkUrl100', item.get('artworkUrl60', ''))
+        if not all(isinstance(value, str) and value.strip() for value in (title, artist)):
+            continue
+        results.append({'title': title[:200], 'artist': artist[:200], 'album': album[:200] if isinstance(album, str) else '',
+                        'artwork': high_resolution_url(url) if artwork_url(url) else '',
+                        'store_url': _store_url(item.get('trackViewUrl')) or _store_url(item.get('collectionViewUrl'))})
+    return results
+
+
 def _cached_search(term):
     key = term.casefold()
     now = time.monotonic()
