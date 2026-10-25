@@ -120,6 +120,33 @@ def schedule_artwork(song):
     ARTWORK_WORKER.submit(lookup)
 
 
+def recognize_songs(shutdown):
+    """Look up one unchecked song at a time in the background, gently enough for Apple's search limits."""
+    global NAME
+    delay = 5
+    while not shutdown.wait(delay):
+        song = LIBRARY.pending_recognition()
+        if not song:
+            delay = 30
+            continue
+        try:
+            found, reachable = artwork.recognize(song)
+        except Exception:
+            found, reachable = {}, False
+        if not reachable:
+            delay = 300
+            continue
+        try:
+            renamed = LIBRARY.apply_recognition(song['id'], found)
+        except ValueError:
+            renamed = None
+        if renamed:
+            with LOCK:
+                if SONG_ID == renamed['id']:
+                    NAME = renamed['name']
+        delay = 10
+
+
 def sound_config():
     return LIBRARY.get_setting('adaptation', {'mode': 'no_drums', 'songs': {}})
 
@@ -436,6 +463,7 @@ def start_services(port=52863):
             with LOCK:
                 QUEUE.tick()
     threading.Thread(target=advance_queue, daemon=True).start()
+    threading.Thread(target=recognize_songs, args=(queue_shutdown,), daemon=True).start()
     awake = subprocess.Popen(['caffeinate', '-i', '-w', str(os.getpid())]) if sys.platform == 'darwin' else None
     print('\nPiano Remote is running. Keep this window open.\n')
     print('Office Wi-Fi remote link:\n' + REMOTE + '\n')

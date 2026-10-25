@@ -89,3 +89,52 @@ class LibraryDeleteTests(unittest.TestCase):
             self.assertEqual([item['id'] for item in result['songs']],[song['id']])
             self.assertEqual(result['songs'][0]['library_ids'],[])
             lib.db.close()
+
+
+class RecognitionTests(unittest.TestCase):
+    def setUp(self):
+        self.temp=tempfile.TemporaryDirectory();self.lib=Library(self.temp.name)
+        artwork.CACHE.clear();artwork.QUERY_CACHE.clear()
+    def tearDown(self):
+        self.lib.db.close();self.temp.cleanup();artwork.CACHE.clear();artwork.QUERY_CACHE.clear()
+
+    def test_confident_match_renames_once_and_keeps_manual_edits(self):
+        song=self.lib.add(midi(60),'tee-time-vulfpeck-tee-time.mid')
+        edited=self.lib.add(midi(61),'Edited.mid')
+        self.lib.mutate({'action':'edit_song','song_id':edited['id'],'name':'My name','artist':'','album':''})
+        self.assertEqual(self.lib.pending_recognition()['id'],song['id'])
+        found={'title':'Tee Time','artist':'Vulfpeck','album':'Mr. Finish Line','source':'Apple iTunes'}
+        renamed=self.lib.apply_recognition(song['id'],found)
+        self.assertEqual((renamed['name'],renamed['artist'],renamed['album']),('Tee Time','Vulfpeck','Mr. Finish Line'))
+        self.assertEqual(renamed['recognition']['original_name'],'tee-time-vulfpeck-tee-time.mid')
+        self.assertTrue((Path(self.temp.name)/'data'/'songs'/self.lib.select(song['id'])[1]['file_name']).exists())
+        self.assertIsNone(self.lib.apply_recognition(song['id'],{'title':'Other'}))
+        self.assertEqual(self.lib.select(song['id'])[1]['name'],'Tee Time')
+        self.assertIsNone(self.lib.pending_recognition())
+        self.assertIsNone(self.lib.apply_recognition(edited['id'],found))
+        self.assertEqual(self.lib.select(edited['id'])[1]['name'],'My name')
+
+    def test_no_match_is_recorded_without_changes(self):
+        song=self.lib.add(midi(60),'beethoven_symphony_5.mid')
+        self.assertIsNone(self.lib.apply_recognition(song['id'],{}))
+        self.assertEqual(self.lib.select(song['id'])[1]['name'],'beethoven_symphony_5.mid')
+        self.assertIsNone(self.lib.pending_recognition())
+
+    def test_recognize_cleans_titles_and_reports_unreachable_search(self):
+        item={'kind':'song','trackName':'Tee Time','artistName':'Vulfpeck','collectionName':'Mr. Finish Line',
+              'artworkUrl100':'https://is1-ssl.mzstatic.com/image/thumb/a/100x100bb.jpg','trackViewUrl':'https://music.apple.com/us/album/x/1?i=2'}
+        original=artwork._search
+        try:
+            artwork._search=lambda term:[item]
+            found,reachable=artwork.recognize({'name':'tee-time-vulfpeck-tee-time.mid'})
+            self.assertTrue(reachable)
+            self.assertEqual((found['title'],found['artist']),('Tee Time','Vulfpeck'))
+            self.assertEqual(artwork.clean_title('Let It Be - Remastered 2009'),'Let It Be')
+            self.assertEqual(artwork.clean_title('Piano Man (2011 Remaster)'),'Piano Man')
+            self.assertEqual(artwork.clean_title('Live and Let Die'),'Live and Let Die')
+            artwork.CACHE.clear();artwork.QUERY_CACHE.clear()
+            def offline(term):raise OSError('offline')
+            artwork._search=offline
+            self.assertEqual(artwork.recognize({'name':'tee-time-vulfpeck-tee-time.mid'}),({},False))
+        finally:
+            artwork._search=original

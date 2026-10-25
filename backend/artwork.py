@@ -222,16 +222,35 @@ def _match(item, title, artist_hint):
 
 
 def lookup(song):
+    return _lookup(song)[0]
+
+
+def recognize(song):
+    """Return (match, reachable); an empty match with reachable=False means try again later."""
+    found, reachable = _lookup(song)
+    if found:
+        found = dict(found, title=clean_title(found['title']))
+    return found, reachable
+
+
+def clean_title(title):
+    # Store titles carry release notes that are not part of the song's name.
+    title = re.sub(r'(?i)\s+-\s+(?:[0-9]{4}\s+)?(?:remaster(?:ed)?|live|single|radio edit|mono|stereo)\b.*$', '', title)
+    title = re.sub(r'(?i)\s*[(\[](?:[0-9]{4}\s+)?(?:remaster(?:ed)?|live|single version|radio edit|mono|stereo)[^)\]]*[)\]]', '', title)
+    return title.strip()[:200]
+
+
+def _lookup(song):
     queries, title, artist_hint = _queries(song)
     if not queries or not _tokens(title):
-        return {}
+        return {}, True
     key = tuple(query.casefold() for query in queries)
     now = time.monotonic()
     with LOCK:
         cached = CACHE.get(key)
         if cached and now - cached[0] < cached[1]:
             CACHE.move_to_end(key)
-            return dict(cached[2])
+            return dict(cached[2]), cached[1] != 300
     try:
         result = {}
         for query in queries:
@@ -250,4 +269,4 @@ def lookup(song):
         CACHE[key] = (now, expiry, dict(result))
         while len(CACHE) > 128:
             CACHE.popitem(last=False)
-    return dict(result)
+    return dict(result), expiry != 300
