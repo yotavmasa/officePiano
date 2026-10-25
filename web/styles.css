@@ -2117,3 +2117,5 @@ a { color: var(--indigo); }
 .top-notice-close { flex: 0 0 auto; width: 24px; height: 24px; margin: -2px -6px -2px 0; display: grid; place-items: center; border-radius: var(--radius-sm); color: inherit; opacity: .7; }
 .top-notice-close:hover { opacity: 1; background: #13163b14; }
 .top-notice-close svg { width: 14px; height: 14px; }
+/* Reserve the scrollbar's space so short and long pages keep the same layout width. */
+html { scrollbar-gutter: stable; }
