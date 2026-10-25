@@ -80,8 +80,8 @@ class CatalogTests(unittest.TestCase):
 
     def test_all_sources_and_legacy_both(self):
         result = {'results': [], 'has_more': False}
-        with patch.object(discovery.maestro, 'available', return_value=False), patch.object(discovery.bitmidi, 'search', return_value=result), patch.object(discovery.freemidi, 'search', return_value=result), patch.object(discovery.bushgrafts, 'search', return_value=result) as jazz, patch.object(discovery.kunstderfuge, 'search', return_value=result) as classical:
-            self.assertEqual(len(discovery.search('test', source='all')['sources']), 4)
+        with patch.object(discovery.maestro, 'available', return_value=False), patch.object(discovery.zzaj, 'search', return_value=result), patch.object(discovery.bitmidi, 'search', return_value=result), patch.object(discovery.freemidi, 'search', return_value=result), patch.object(discovery.bushgrafts, 'search', return_value=result) as jazz, patch.object(discovery.kunstderfuge, 'search', return_value=result) as classical:
+            self.assertEqual(len(discovery.search('test', source='all')['sources']), 5)
             jazz.reset_mock(); classical.reset_mock()
             self.assertEqual(len(discovery.search('test', source='both')['sources']), 2)
             jazz.assert_not_called(); classical.assert_not_called()
@@ -145,8 +145,49 @@ class MaestroTests(unittest.TestCase):
         empty = {'results': [], 'has_more': False}
         with patch.object(self.maestro, 'available', return_value=False), patch.object(discovery.bitmidi, 'search', return_value=empty), \
              patch.object(discovery.freemidi, 'search', return_value=empty), patch.object(discovery.bushgrafts, 'search', return_value=empty), \
-             patch.object(discovery.kunstderfuge, 'search', return_value=empty):
+             patch.object(discovery.kunstderfuge, 'search', return_value=empty), patch.object(discovery.zzaj, 'search', return_value=empty):
             self.assertNotIn('maestro', discovery.search('test', source='all')['sources'])
             with patch.object(self.maestro, 'FOLDER', self.maestro.FOLDER / 'missing'):
                 with self.assertRaises(ValueError):
                     discovery.search('test', source='maestro')
+
+
+class ZzajTests(unittest.TestCase):
+    PAGE = ("<table><tr><th>i</th><th>song</th></tr>"
+            "<tr><td>A</td><td>After The Rain</td><td><a href='AfterTheRainC.pdf'>lead sheet</a></td><td></td><td></td>"
+            "<td>John Coltrane</td><td>Ab Major</td><td>Ballad</td><td><a href='AfterTheRain.mid' target='_blank'>midi</a></td><td></td></tr>"
+            "<tr><td>A</td><td>Agua De Beber</td><td></td><td></td><td></td><td>Antonio Carlos Jobim</td><td>A minor</td><td>Latin</td>"
+            "<td><a href='AguaDeBeber.mid'>midi</a></td></tr>"
+            "<tr><td>B</td><td>No Midi Here</td><td></td><td></td><td></td><td>Someone</td><td>C</td><td>Swing</td><td> </td></tr>"
+            "<tr><td>C</td><td>Elsewhere</td><td></td><td></td><td></td><td>X</td><td>C</td><td>Swing</td><td><a href='https://evil.test/x.mid'>midi</a></td></tr></table>")
+
+    def setUp(self):
+        from backend import zzaj
+        self.zzaj = zzaj
+        zzaj.FILES.clear()
+        self.page = patch.object(zzaj.SITE, 'page', return_value=self.PAGE)
+        self.page.start()
+
+    def tearDown(self):
+        self.page.stop(); self.zzaj.FILES.clear()
+
+    def test_reads_only_listed_midi_rows_and_searches_them(self):
+        self.assertEqual([song['title'] for song in self.zzaj.songs().values()], ['After The Rain', 'Agua De Beber'])
+        self.assertEqual([r['name'] for r in self.zzaj.search('coltrane')['results']], ['After The Rain — John Coltrane'])
+        self.assertEqual([r['name'] for r in self.zzaj.search('jobmi agua')['results']], ['Agua De Beber — Antonio Carlos Jobim'])
+        self.assertEqual(self.zzaj.search('monk')['results'], [])
+        self.assertEqual(self.zzaj.search('latin')['total_matches'], 1)
+
+    def test_downloads_only_indexed_files(self):
+        import io, mido
+        score = mido.MidiFile(); track = mido.MidiTrack(); score.tracks.append(track)
+        track.extend([mido.Message('note_on', note=60, velocity=64), mido.Message('note_off', note=60, time=480)])
+        out = io.BytesIO(); score.save(file=out)
+        with patch.object(self.zzaj.SITE, 'fetch', return_value=out.getvalue()) as fetch:
+            data, song = self.zzaj.download('https://zzaj.web.fc2.com/score/AfterTheRain.mid')
+            self.zzaj.download('https://zzaj.web.fc2.com/score/AfterTheRain.mid')
+        self.assertEqual(fetch.call_count, 1)
+        self.assertEqual(song['name'], 'After The Rain — John Coltrane')
+        for url in ['https://zzaj.web.fc2.com/score/NotListed.mid', 'https://evil.test/x.mid', 'http://zzaj.web.fc2.com/score/AfterTheRain.mid']:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                self.zzaj.download(url)

@@ -6,9 +6,10 @@ from . import bitmidi
 from . import freemidi
 from .catalogs import bushgrafts, kunstderfuge
 from . import maestro
+from . import zzaj
 
-PROVIDERS = {'bitmidi': bitmidi, 'freemidi': freemidi, 'bushgrafts': bushgrafts, 'kunstderfuge': kunstderfuge, 'maestro': maestro}
-LABELS = {'bitmidi': 'BitMidi', 'freemidi': 'FreeMidi', 'bushgrafts': 'Bushgrafts', 'kunstderfuge': 'Kunst der Fuge', 'maestro': 'MAESTRO'}
+PROVIDERS = {'bitmidi': bitmidi, 'freemidi': freemidi, 'bushgrafts': bushgrafts, 'kunstderfuge': kunstderfuge, 'maestro': maestro, 'zzaj': zzaj}
+LABELS = {'bitmidi': 'BitMidi', 'freemidi': 'FreeMidi', 'bushgrafts': 'Bushgrafts', 'kunstderfuge': 'Kunst der Fuge', 'maestro': 'MAESTRO', 'zzaj': 'zzaj'}
 
 
 def search(query, page=1, source='bitmidi'):
@@ -57,4 +58,6 @@ def download(url):
         return kunstderfuge.download(url)
     if host in maestro.HOSTS:
         return maestro.download(url)
+    if host == 'zzaj.web.fc2.com':
+        return zzaj.download(url)
     raise ValueError('Choose a song from one of the supported MIDI sources.')
