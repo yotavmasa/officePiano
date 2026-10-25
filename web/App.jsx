@@ -735,6 +735,7 @@ function App() {
       const failures = [];
       const warnings = [];
       let saved = 0;
+      const songs = [];
       for (const file of files) {
         try {
           if (!/\.midi?$/i.test(file.name)) throw Error('Choose a .mid or .midi file.');
@@ -746,18 +747,20 @@ function App() {
           });
           acceptLibrary(data.library);
           saved += 1;
+          if (data.song) songs.push(data.song);
           if (data.warning) warnings.push(`${file.name}: ${data.warning}`);
         } catch (error) {
           failures.push(`${file.name}: ${error.message || 'Could not save this file.'}`);
         }
       }
-      return { ok: true, saved, failures, warnings };
+      return { ok: true, saved, failures, warnings, songs };
     });
     if (result) {
       let summary = `Saved ${result.saved} ${result.saved === 1 ? 'song' : 'songs'}${destination ? ` to ${destination.name}` : ''}.`;
       if (result.failures.length) summary += ` Could not save: ${result.failures.join('; ')}`;
       if (result.warnings.length) summary += ` ${result.warnings.join('; ')}`;
       announce(summary, !result.failures.length && !result.warnings.length);
+      if (result.songs.length) startEditDetails(result.songs);
     }
     input.value = '';
   }
@@ -1061,7 +1064,7 @@ function App() {
       { label: 'Add to library…', icon: 'folder', onSelect: () => setDialog({ type: 'assign', songId: song.id }) },
       { separator: true, key: 'settings' },
       { label: 'Playback sound…', icon: 'piano', disabled: busy, onSelect: () => openAdaptation(song.id) },
-      { label: 'Edit details…', icon: 'edit', disabled: busy, onSelect: () => openEditDetails(song) },
+      { label: 'Edit details…', icon: 'edit', disabled: busy, onSelect: () => startEditDetails([song]) },
       { label: 'Download MIDI', icon: 'download', onSelect: () => download(song) },
       song.source_kind === 'sheet' && { label: 'Download editable score', icon: 'book', onSelect: () => downloadRecognizedScore(song) },
       { separator: true, key: 'danger' },
@@ -1113,14 +1116,25 @@ function App() {
     }
   }
   // Edit details: the search fills the form; nothing is saved until Save.
-  function openEditDetails(song) {
+  // Uploads open it for each new song in turn; Save or Cancel moves to the next.
+  const pendingEdits = useRef([]);
+  function startEditDetails(songs) {
+    pendingEdits.current = songs.slice(1).map((song, index) => ({ song, step: index + 2, total: songs.length }));
+    openEditDetails(songs[0], 1, songs.length);
+  }
+  function closeEditDetails() {
+    itunesRequest.current += 1;
+    const next = pendingEdits.current.shift();
+    if (next) openEditDetails(next.song, next.step, next.total); else setDialog(null);
+  }
+  function openEditDetails(song, step = 1, total = 1) {
     itunesRequest.current += 1;
     setLibraryName(songTitle(song.name));
     setSongArtist(song.artist || '');
     setSongAlbum(song.album || '');
     setSongCover(typeof song.recognition?.artwork === 'string' ? song.recognition.artwork : '');
     setItunes({ query: [songTitle(song.name).replace(/[_-]+/g, ' '), song.artist].filter(Boolean).join(' ').slice(0, 120), results: null, loading: false, error: '', chosen: -1 });
-    setDialog({ type: 'rename_song', songId: song.id });
+    setDialog({ type: 'rename_song', songId: song.id, step, total });
   }
   function chooseResult(result, index) {
     setLibraryName(result.title);
@@ -1202,7 +1216,7 @@ function App() {
       { label: song.favorite ? 'Remove from favorites' : 'Add to favorites', icon: 'heart', disabled: busy, onSelect: () => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite })) },
       { label: 'Add to library…', icon: 'folder', onSelect: () => setDialog({ type: 'assign', songId: song.id }) },
       { label: 'Playback sound…', icon: 'piano', disabled: busy, onSelect: () => openAdaptation(song.id) },
-      { label: 'Edit details…', icon: 'edit', disabled: busy, onSelect: () => openEditDetails(song) },
+      { label: 'Edit details…', icon: 'edit', disabled: busy, onSelect: () => startEditDetails([song]) },
       { label: 'Download MIDI', icon: 'download', onSelect: () => download(song) },
     ];
   }
@@ -1467,12 +1481,13 @@ function App() {
       if (result) setDialog(null);
     }}><label htmlFor="libraryName" className="dialog-label">Library name</label><input id="libraryName" className="field" placeholder="Quiet mornings" required maxLength="80" value={libraryName} onChange={event => setLibraryName(event.target.value)} autoFocus /><div className="dialog-actions"><button type="button" className="btn light" onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy}>{dialog.type === 'rename' ? 'Save name' : 'Create library'}</button></div></form></Dialog>}
     {dialog?.type === 'assign' && <Dialog title="Save to a library" onClose={() => setDialog(null)}><p className="dialog-hint">{assignedSong?.name}</p>{library.libraries.length ? library.libraries.map(item => <label className="check-row" key={item.id}><input type="checkbox" disabled={busy} checked={(assignedSong?.library_ids || []).includes(item.id)} onChange={event => run(() => post('/api/library', { action: 'assign', song_id: assignedSong.id, library_id: item.id, value: event.target.checked }))} /><span>{item.name}</span></label>) : <p className="dialog-hint">Create a library with the + button in the sidebar first.</p>}<div className="dialog-actions"><button className="btn" onClick={() => setDialog(null)}>Done</button></div></Dialog>}
-    {dialog?.type === 'rename_song' && <Dialog title="Edit details" closeDisabled={busy} onClose={() => { itunesRequest.current += 1; setDialog(null); }}><form onSubmit={async event => {
+    {dialog?.type === 'rename_song' && <Dialog key={dialog.songId} title="Edit details" closeDisabled={busy} onClose={closeEditDetails}><form onSubmit={async event => {
       event.preventDefault();
       const original = typeof assignedSong?.recognition?.artwork === 'string' ? assignedSong.recognition.artwork : '';
       const result = await run(() => post('/api/library', { action: 'edit_song', song_id: dialog.songId, name: libraryName.trim(), artist: songArtist.trim(), album: songAlbum.trim(), ...(songCover !== original ? { artwork: songCover } : {}) }), 'Song updated.');
-      if (result) { itunesRequest.current += 1; setDialog(null); }
+      if (result) closeEditDetails();
     }}>
+      {dialog.total > 1 && <p className="dialog-hint">Song {dialog.step} of {dialog.total}</p>}
       <div className="edit-details-head">
         <span className="edit-details-cover">{songCover ? <img src={songCover.replace(/\/600x600bb\.(jpg|png)$/i, '/100x100bb.$1')} alt="" /> : <Icon name="note" />}</span>
         <div className="edit-details-fields">
@@ -1496,7 +1511,7 @@ function App() {
             </button>)}</div>}
       </div>
       {assignedSong?.recognition?.original_name && <p className="dialog-hint">Original file name: {assignedSong.recognition.original_name}</p>}
-      <div className="dialog-actions"><button type="button" className="btn light" disabled={busy} onClick={() => { itunesRequest.current += 1; setDialog(null); }}>Cancel</button><button className="btn" disabled={busy || !libraryName.trim()}>Save</button></div>
+      <div className="dialog-actions"><button type="button" className="btn light" disabled={busy} onClick={closeEditDetails}>{dialog.step < dialog.total ? 'Skip' : 'Cancel'}</button><button className="btn" disabled={busy || !libraryName.trim()}>{dialog.step < dialog.total ? 'Save and next' : 'Save'}</button></div>
     </form></Dialog>}
     {dialog?.type === 'delete' && <Dialog title="Remove this song?" onClose={() => setDialog(null)}><p className="dialog-hint">{assignedSong?.name}</p><p className="dialog-hint">This removes the song from All songs, favorites, libraries, and the queue. If it is playing, playback stops. The MIDI is moved to the app’s trash folder, and you can undo.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={async () => { const song = assignedSong; const result = await run(() => post('/api/library', { action: 'delete', song_id: song.id })); if (result) { setDialog(null); setNotice({ text: 'Song removed.', success: true, undoSongIds: [song.id] }); } }}>Remove song</button></div></Dialog>}
     {dialog?.type === 'bulk_delete' && <Dialog title={`Remove ${countSongs(dialog.songIds.length)}?`} onClose={() => setDialog(null)}><p className="dialog-hint">This removes them from All songs, favorites, libraries, and the queue. If one is playing, playback stops. The MIDI files are moved to the app’s trash folder, and you can undo.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={() => deleteSongs(dialog.songIds)}>Remove {countSongs(dialog.songIds.length)}</button></div></Dialog>}
