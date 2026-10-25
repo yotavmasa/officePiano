@@ -150,6 +150,15 @@ class Playback:
             self.control('stop')
             self.song_ids, self.index = [], 0
             self._save()
+        elif action == 'clear_after':
+            if 'expected_song_ids' in request and request['expected_song_ids'] != self.song_ids:
+                raise ValueError('The queue changed. Try clearing it again.')
+            position = self._position(request.get('index'))
+            if self.index > position:
+                self.control('stop')
+                self.index = position
+            del self.song_ids[position + 1:]
+            self._save()
         elif action == 'remove':
             position = self._position(request.get('index'))
             if position == self.index:
