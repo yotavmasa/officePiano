@@ -4,6 +4,7 @@
   --indigo:#5151ca; --indigo-40:#b9b9ea; --indigo-20:#dcdcf4;
   --orchid:#ff8dff; --blush:#ffe8ff; --mint:#55ffa2;
   --ink:#13163b; --slate:#4a4e69; --mist:#fbfafe; --white:#ffffff;
+  --danger:#c62828; --danger-10:#fdecec;
   --font-sans:Roobert, "DM Sans", Arial, sans-serif;
   --font-mono:"Roobert Mono", "DM Mono", ui-monospace, monospace;
   --radius-sm:6px; --radius-card:16px; --radius-pill:999px;
@@ -1937,7 +1938,8 @@ h2,
 .context-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 6px; text-align: left; font-size: 13px; color: var(--forest); }
 .context-menu button svg { width: 16px; height: 16px; color: var(--slate); }
 .context-menu button:hover:not(:disabled), .context-menu button:focus-visible { background: var(--periwinkle-20); outline: none; }
-.context-menu button.is-danger, .context-menu button.is-danger svg { color: var(--ink); }
+.context-menu button.is-danger, .context-menu button.is-danger svg { color: var(--danger); }
+.context-menu button.is-danger:hover:not(:disabled), .context-menu button.is-danger:focus-visible { background: var(--danger-10); }
 .context-menu-separator { height: 1px; margin: 5px 4px; background: var(--line); }
 .bulk-bar { position: fixed; left: 262px; right: 24px; bottom: 112px; z-index: 36; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--forest); color: var(--white); box-shadow:none; }
 .bulk-bar strong { font-size: 13px; }
