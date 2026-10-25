@@ -368,19 +368,19 @@ class Library:
                     if any(not isinstance(value, str) or len(value.strip()) > 200 for value in (artist, album)):
                         raise ValueError('Artist and album must be at most 200 characters.')
                     artist, album = artist.strip(), album.strip()
-                old_path = self.saved_folder / self._file_name(row)
-                renamed = dict(row, name=name)
-                new_path = self.saved_folder / self._file_name(renamed)
-                try:
-                    if old_path != new_path and old_path.exists():
-                        os.replace(old_path, new_path)
-                    else:
-                        self._export(renamed)
-                except OSError as exc:
-                    raise ValueError('Could not rename the saved file. Check the music folder is writable.') from exc
-                self.db.execute('UPDATE songs SET name=? WHERE id=?', (name, identity))
+                self._rename(row, name)
                 if action == 'edit_song':
                     self.db.execute('UPDATE songs SET artist=?,album=?,metadata_edited=1 WHERE id=?', (artist, album, identity))
+                    if 'artwork' in request:
+                        # A cover chosen (or removed) in Edit details; keep the first file name for reference.
+                        cover = request['artwork']
+                        if not isinstance(cover, str) or len(cover) > 3000:
+                            raise ValueError('That song cover is invalid.')
+                        metadata = json.loads(row['metadata'])
+                        previous = metadata.get('recognition', {})
+                        metadata['recognition'] = {**previous, 'manual': True, 'artwork': cover,
+                                                   'original_name': previous.get('original_name') or row['name']}
+                        self.db.execute('UPDATE songs SET metadata=? WHERE id=?', (json.dumps(metadata), identity))
             elif action == 'rename':
                 identity = request.get('library_id')
                 name = self._name(request.get('name'))
@@ -436,6 +436,50 @@ class Library:
             else:
                 raise ValueError('Invalid library command.')
         return self.snapshot()
+
+    def _rename(self, row, name):
+        old_path = self.saved_folder / self._file_name(row)
+        renamed = dict(row, name=name)
+        new_path = self.saved_folder / self._file_name(renamed)
+        try:
+            if old_path != new_path and old_path.exists():
+                os.replace(old_path, new_path)
+            else:
+                self._export(renamed)
+        except OSError as exc:
+            raise ValueError('Could not rename the saved file. Check the music folder is writable.') from exc
+        self.db.execute('UPDATE songs SET name=? WHERE id=?', (name, row['id']))
+
+    def pending_recognition(self):
+        """The next saved song not yet checked for its real title and artist, skipping manual edits."""
+        with self.lock:
+            for row in self.db.execute('SELECT id,name,source_url,metadata,artist,album FROM songs WHERE deleted=0 AND metadata_edited=0 ORDER BY created'):
+                if 'recognition' not in json.loads(row['metadata']):
+                    return {key: row[key] for key in ('id', 'name', 'source_url', 'artist', 'album')}
+        return None
+
+    def apply_recognition(self, identity, found):
+        """Record a lookup once; a confident match renames the song and fills an empty artist or album."""
+        with self.lock, self.db:
+            row = self.db.execute('SELECT * FROM songs WHERE id=? AND deleted=0', (identity,)).fetchone()
+            if not row:
+                return None
+            metadata = json.loads(row['metadata'])
+            if 'recognition' in metadata:
+                return None
+            title = found.get('title', '').strip() if found else ''
+            if row['metadata_edited'] or not title or len(title) > 200:
+                metadata['recognition'] = {'matched': False}
+                self.db.execute('UPDATE songs SET metadata=? WHERE id=?', (json.dumps(metadata), identity))
+                return None
+            metadata['recognition'] = {'matched': True, 'original_name': row['name'], 'source': found.get('source', ''),
+                                       'artwork': found.get('url', '') if isinstance(found.get('url'), str) else ''}
+            self.db.execute('UPDATE songs SET metadata=? WHERE id=?', (json.dumps(metadata), identity))
+            if title != row['name']:
+                self._rename(row, title)
+            self.db.execute("UPDATE songs SET artist=CASE WHEN artist='' THEN ? ELSE artist END, album=CASE WHEN album='' THEN ? ELSE album END WHERE id=?",
+                            (found.get('artist', '').strip()[:200], found.get('album', '').strip()[:200], identity))
+            return self._song(self.db.execute('SELECT id,name,source_url,metadata,favorite,created,source_kind,artist,album,metadata_edited FROM songs WHERE id=?', (identity,)).fetchone())
 
     def fill_metadata(self, identity, artist='', album=''):
         if any(not isinstance(value, str) or len(value) > 200 for value in (artist, album)):

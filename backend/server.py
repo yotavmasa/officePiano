@@ -120,6 +120,33 @@ def schedule_artwork(song):
     ARTWORK_WORKER.submit(lookup)
 
 
+def recognize_songs(shutdown):
+    """Look up one unchecked song at a time in the background, gently enough for Apple's search limits."""
+    global NAME
+    delay = 5
+    while not shutdown.wait(delay):
+        song = LIBRARY.pending_recognition()
+        if not song:
+            delay = 30
+            continue
+        try:
+            found, reachable = artwork.recognize(song)
+        except Exception:
+            found, reachable = {}, False
+        if not reachable:
+            delay = 300
+            continue
+        try:
+            renamed = LIBRARY.apply_recognition(song['id'], found)
+        except ValueError:
+            renamed = None
+        if renamed:
+            with LOCK:
+                if SONG_ID == renamed['id']:
+                    NAME = renamed['name']
+        delay = 10
+
+
 def sound_config():
     return LIBRARY.get_setting('adaptation', {'mode': 'no_drums', 'songs': {}})
 
@@ -263,6 +290,8 @@ class RequestHandler:
                 path, name = SHEETS.source(query.get('id', [''])[0])
                 safe_name = ''.join(c for c in name if c.isascii() and (c.isalnum() or c in ' ._-'))[:200] or 'sheet.pdf'
                 return self.reply(200, path.read_bytes(), mimetypes.guess_type(name)[0] or 'application/octet-stream', safe_name)
+            if request.path == '/api/itunes-search':
+                return self.reply(200, {'ok': True, 'results': artwork.candidates(query.get('q', [''])[0])})
             if request.path == '/api/song-playback':
                 # The same adapted copy the piano plays; rendering stays outside the MIDI lock.
                 song_id = query.get('song_id', [''])[0]
@@ -371,6 +400,8 @@ class RequestHandler:
                             song = load_song(request.get('song_id'))
                             result = dict(ok=True, song=song)
                         elif self.path == '/api/library':
+                            if request.get('action') == 'edit_song' and request.get('artwork') and not artwork.artwork_url(request.get('artwork')):
+                                raise ValueError('That song cover is invalid.')
                             library = LIBRARY.mutate(request)
                             if request.get('action') in ('rename_song', 'edit_song') and request.get('song_id') == SONG_ID:
                                 renamed = next(song for song in library['songs'] if song['id'] == SONG_ID)
@@ -436,6 +467,7 @@ def start_services(port=52863):
             with LOCK:
                 QUEUE.tick()
     threading.Thread(target=advance_queue, daemon=True).start()
+    threading.Thread(target=recognize_songs, args=(queue_shutdown,), daemon=True).start()
     awake = subprocess.Popen(['caffeinate', '-i', '-w', str(os.getpid())]) if sys.platform == 'darwin' else None
     print('\nPiano Remote is running. Keep this window open.\n')
     print('Office Wi-Fi remote link:\n' + REMOTE + '\n')
