@@ -263,6 +263,12 @@ class RequestHandler:
                 path, name = SHEETS.source(query.get('id', [''])[0])
                 safe_name = ''.join(c for c in name if c.isascii() and (c.isalnum() or c in ' ._-'))[:200] or 'sheet.pdf'
                 return self.reply(200, path.read_bytes(), mimetypes.guess_type(name)[0] or 'application/octet-stream', safe_name)
+            if request.path == '/api/song-playback':
+                # The same adapted copy the piano plays; rendering stays outside the MIDI lock.
+                song_id = query.get('song_id', [''])[0]
+                data, song = LIBRARY.playable(song_id)
+                prepared, _ = adaptation.render(data, sound_settings(song_id))
+                return self.reply(200, prepared, 'audio/midi', song['file_name'])
             if request.path == '/api/search':
                 result = discovery.search(query.get('q', [''])[0], int(query.get('page', ['1'])[0]), query.get('source', ['bitmidi'])[0])
                 return self.reply(200, result)
