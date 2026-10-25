@@ -457,7 +457,8 @@ h2 {
   outline:none
 }
 .search button {
-  padding:9px 15px
+  height:33px;
+  padding:0 15px
 }
 .discovery-note {
   font-size:12px;
