@@ -2000,7 +2000,8 @@ h2,
 .topbar-status { view-transition-name: topbar-status; }
 ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 300ms; animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
 /* The player card morphs as a solid shape; its snapshots are cropped, never stretched. */
-::view-transition-group(now-playing) { background: var(--indigo); border-radius: var(--radius-card); overflow: clip; }
+::view-transition-group(now-playing) { background: var(--indigo); border-radius: var(--radius-card); overflow: clip; z-index: 10; }
+::view-transition-group(now-playing-art) { z-index: 11; }
 ::view-transition-old(now-playing), ::view-transition-new(now-playing) { width: 100%; height: 100%; object-fit: none; object-position: left top; }
 /* The queue changes shape too much to morph, so it fades out of the page while the side panel slides in.
    :only-child limits these to entering or leaving; identical panels on both sides just crossfade. */
