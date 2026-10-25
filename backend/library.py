@@ -377,7 +377,7 @@ class Library:
                 name = self._name(request.get('title'))
                 artist, album, cover = request.get('artist', ''), request.get('album', ''), request.get('artwork', '')
                 if any(not isinstance(value, str) or len(value.strip()) > 200 for value in (artist, album)) or not isinstance(cover, str) or len(cover) > 3000:
-                    raise ValueError('That Apple Music result is invalid.')
+                    raise ValueError('That song result is invalid.')
                 row = self.db.execute('SELECT * FROM songs WHERE id=? AND deleted=0', (identity,)).fetchone() if isinstance(identity, str) else None
                 if not row:
                     raise ValueError('Choose a saved song.')

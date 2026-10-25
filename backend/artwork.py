@@ -185,7 +185,7 @@ def candidates(term):
     try:
         items = _cached_search(term.strip())
     except (ValueError, TypeError, UnicodeError, urllib.error.URLError, TimeoutError, OSError):
-        raise ValueError('Apple Music search is unavailable. Check the internet connection and try again.') from None
+        raise ValueError('Song search is unavailable. Check the internet connection and try again.') from None
     results = []
     for item in items:
         if not isinstance(item, dict) or item.get('kind') != 'song':

@@ -1060,7 +1060,7 @@ function App() {
       { label: 'Add to library…', icon: 'folder', onSelect: () => setDialog({ type: 'assign', songId: song.id }) },
       { separator: true, key: 'settings' },
       { label: 'Playback sound…', icon: 'piano', disabled: busy, onSelect: () => openAdaptation(song.id) },
-      { label: 'Find in iTunes…', icon: 'search', disabled: busy, onSelect: () => openItunes(song) },
+      { label: 'Find song info…', icon: 'search', disabled: busy, onSelect: () => openItunes(song) },
       { label: 'Edit details…', icon: 'edit', disabled: busy, onSelect: () => { setLibraryName(songTitle(song.name)); setSongArtist(song.artist || ''); setSongAlbum(song.album || ''); setDialog({ type: 'rename_song', songId: song.id }); } },
       { label: 'Download MIDI', icon: 'download', onSelect: () => download(song) },
       song.source_kind === 'sheet' && { label: 'Download editable score', icon: 'book', onSelect: () => downloadRecognizedScore(song) },
@@ -1119,7 +1119,7 @@ function App() {
   }
   async function chooseItunes(result) {
     const song = assignedSong;
-    const done = await run(() => post('/api/library', { action: 'apply_itunes', song_id: song.id, title: result.title, artist: result.artist, album: result.album, artwork: result.artwork }), 'Saved from Apple Music.');
+    const done = await run(() => post('/api/library', { action: 'apply_itunes', song_id: song.id, title: result.title, artist: result.artist, album: result.album, artwork: result.artwork }), 'Song info saved.');
     if (done) { itunesRequest.current += 1; setDialog(null); }
   }
   const menuSong = songMenu && library.songs.find(song => song.id === songMenu.songId) && (songMenu.kind !== 'queue' || queueIds[songMenu.index] === songMenu.songId) ? library.songs.find(song => song.id === songMenu.songId) : null;
@@ -1195,7 +1195,7 @@ function App() {
       { label: song.favorite ? 'Remove from favorites' : 'Add to favorites', icon: 'heart', disabled: busy, onSelect: () => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite })) },
       { label: 'Add to library…', icon: 'folder', onSelect: () => setDialog({ type: 'assign', songId: song.id }) },
       { label: 'Playback sound…', icon: 'piano', disabled: busy, onSelect: () => openAdaptation(song.id) },
-      { label: 'Find in iTunes…', icon: 'search', disabled: busy, onSelect: () => openItunes(song) },
+      { label: 'Find song info…', icon: 'search', disabled: busy, onSelect: () => openItunes(song) },
       { label: 'Download MIDI', icon: 'download', onSelect: () => download(song) },
     ];
   }
@@ -1468,13 +1468,13 @@ function App() {
     {dialog?.type === 'delete' && <Dialog title="Remove this song?" onClose={() => setDialog(null)}><p className="dialog-hint">{assignedSong?.name}</p><p className="dialog-hint">This removes the song from All songs, favorites, libraries, and the queue. If it is playing, playback stops. The MIDI is moved to the app’s trash folder, and you can undo.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={async () => { const song = assignedSong; const result = await run(() => post('/api/library', { action: 'delete', song_id: song.id })); if (result) { setDialog(null); setNotice({ text: 'Song removed.', success: true, undoSongIds: [song.id] }); } }}>Remove song</button></div></Dialog>}
     {dialog?.type === 'bulk_delete' && <Dialog title={`Remove ${countSongs(dialog.songIds.length)}?`} onClose={() => setDialog(null)}><p className="dialog-hint">This removes them from All songs, favorites, libraries, and the queue. If one is playing, playback stops. The MIDI files are moved to the app’s trash folder, and you can undo.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={() => deleteSongs(dialog.songIds)}>Remove {countSongs(dialog.songIds.length)}</button></div></Dialog>}
     {dialog?.type === 'delete_library' && (() => { const item = library.libraries.find(entry => entry.id === dialog.libraryId); return item && <Dialog title="Delete this library?" onClose={() => setDialog(null)}><p className="dialog-hint">{item.name}</p><p className="dialog-hint">The library is removed. Its songs stay in All songs, favorites, and the queue.</p><div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy} onClick={() => deleteLibrary(item)}>Delete library</button></div></Dialog>; })()}
-    {dialog?.type === 'itunes' && assignedSong && <Dialog title="Find in iTunes" onClose={() => { itunesRequest.current += 1; setDialog(null); }}>
+    {dialog?.type === 'itunes' && assignedSong && <Dialog title="Find song info" onClose={() => { itunesRequest.current += 1; setDialog(null); }}>
       <p className="adaptation-selected-song">{songTitle(assignedSong.name)}</p>
       <form className="itunes-search" onSubmit={event => { event.preventDefault(); if (itunes.query.trim()) searchItunes(itunes.query.trim()); }}>
-        <input className="field" type="search" maxLength="120" aria-label="Search Apple Music" value={itunes.query} onChange={event => setItunes(previous => ({ ...previous, query: event.target.value }))} />
+        <input className="field" type="search" maxLength="120" aria-label="Search for a song" value={itunes.query} onChange={event => setItunes(previous => ({ ...previous, query: event.target.value }))} />
         <button className="btn" type="submit" disabled={itunes.loading || !itunes.query.trim()}>Search</button>
       </form>
-      {itunes.loading ? <p className="dialog-hint" role="status"><span className="spinner" /> Searching Apple Music…</p>
+      {itunes.loading ? <p className="dialog-hint" role="status"><span className="spinner" /> Searching…</p>
         : itunes.error ? <p className="message visible" role="alert">{itunes.error}</p>
         : itunes.results && !itunes.results.length ? <p className="dialog-hint">No songs found. Try fewer or different words.</p>
         : itunes.results && <div className="itunes-results" role="list">{itunes.results.map((result, index) => <button key={index} type="button" role="listitem" className="itunes-result" disabled={busy} onClick={() => chooseItunes(result)}>

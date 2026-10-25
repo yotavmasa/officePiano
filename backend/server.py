@@ -401,7 +401,7 @@ class RequestHandler:
                             result = dict(ok=True, song=song)
                         elif self.path == '/api/library':
                             if request.get('action') == 'apply_itunes' and request.get('artwork') and not artwork.artwork_url(request.get('artwork')):
-                                raise ValueError('That Apple Music cover is invalid.')
+                                raise ValueError('That song cover is invalid.')
                             library = LIBRARY.mutate(request)
                             if request.get('action') in ('rename_song', 'edit_song', 'apply_itunes') and request.get('song_id') == SONG_ID:
                                 renamed = next(song for song in library['songs'] if song['id'] == SONG_ID)
