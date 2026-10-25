@@ -2088,3 +2088,5 @@ a { color: var(--indigo); }
 @media (min-width: 741px) { .topbar { display: none; } }
 @media (max-width: 740px) { .sidebar .side-status, .sidebar .side-wifi { display: none; } }
 .side-status .connection { padding-left: 14px; padding-right: 14px; }
+.player .playing-on, .player .playing-on.is-local { color: var(--white); font-weight: 400; }
+.playing-on-warning { color: var(--mint); }
