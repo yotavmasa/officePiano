@@ -1267,8 +1267,7 @@ function App() {
       <div className="collections wip-section"><div className="side-heading"><button type="button" className="side-toggle" aria-expanded={betaVisible} aria-controls="beta-features" onClick={() => setBetaOpen(open => { storage.set('piano-beta-open', open ? 'off' : 'on'); return !open; })}><span className="eyebrow">Beta features</span><Icon name="arrow" style={{ transform: betaVisible ? 'rotate(90deg)' : 'none' }} /></button></div>
         {betaVisible && <nav className="nav library-nav" id="beta-features" aria-label="Beta features"><button className={view === 'sheets' ? 'active' : ''} aria-current={view === 'sheets' ? 'page' : undefined} onClick={() => navigate('sheets')}><Icon name="book" /><span className="name">Sheet music</span><span className="count">{library.songs.filter(song => song.source_kind === 'sheet').length}</span></button></nav>}
       </div>
-      <div className="side-status">{connectionStatus}</div>
-      <button type="button" className="side-wifi" onClick={() => { setCopied(false); setDialog({ type: 'remote' }); }}><Icon name="wifi" />Control over Wi-Fi</button>
+      <div className="side-status">{connectionStatus}<button type="button" className="side-wifi" onClick={() => { setCopied(false); setDialog({ type: 'remote' }); }}><Icon name="wifi" />Control over Wi-Fi</button></div>
     </aside>
     <main className="main">
       <header className="topbar"><div className="topbar-status">{connectionStatus}<button type="button" className="icon-button" aria-label="Control over Wi-Fi" title="Control over Wi-Fi" onClick={() => { setCopied(false); setDialog({ type: 'remote' }); }}><Icon name="wifi" /></button></div></header>

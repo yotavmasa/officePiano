@@ -2082,7 +2082,8 @@ a { color: var(--indigo); }
 .side-wifi svg { width: 16px; height: 16px; }
 .side-status { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: auto 0 0; }
 .side-status .connection { width: 100%; max-width: none; }
-.side-status .online-count { padding-left: 4px; }
-.side-wifi { white-space: nowrap; margin: 6px 0 0; }
+.side-status .online-count { padding-left: 14px; }
+.side-wifi { white-space: nowrap; margin: 2px 0 0; padding: 8px 14px; }
 @media (min-width: 741px) { .topbar { display: none; } }
 @media (max-width: 740px) { .sidebar .side-status, .sidebar .side-wifi { display: none; } }
+.side-status .connection { padding-left: 14px; padding-right: 14px; }
