@@ -69,6 +69,11 @@ class CatalogTests(unittest.TestCase):
             jazz.reset_mock(); classical.reset_mock()
             self.assertEqual(len(discovery.search('test', source='both')['sources']), 2)
             jazz.assert_not_called(); classical.assert_not_called()
+            jazz.reset_mock(); classical.reset_mock()
+            self.assertEqual(discovery.search('test', source='bushgrafts,kunstderfuge')['sources'], ['bushgrafts', 'kunstderfuge'])
+            for bad in ('', 'bitmidi,nope', ','):
+                with self.subTest(source=bad), self.assertRaises(ValueError):
+                    discovery.search('test', source=bad)
 
 
 if __name__ == '__main__':
