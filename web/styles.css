@@ -2077,3 +2077,12 @@ a { color: var(--indigo); }
 @media (min-width: 741px) {
   .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; overscroll-behavior: contain; }
 }
+.side-wifi { display: flex; align-items: center; gap: 8px; margin: 4px 11px 0; padding: 8px 12px; border-radius: var(--radius-pill); font-size: 13px; color: var(--indigo); }
+.side-wifi:hover { background: var(--periwinkle-20); }
+.side-wifi svg { width: 16px; height: 16px; }
+.side-status { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; margin: auto 0 0; }
+.side-status .connection { width: 100%; max-width: none; }
+.side-status .online-count { padding-left: 4px; }
+.side-wifi { white-space: nowrap; margin: 6px 0 0; }
+@media (min-width: 741px) { .topbar { display: none; } }
+@media (max-width: 740px) { .sidebar .side-status, .sidebar .side-wifi { display: none; } }

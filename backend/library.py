@@ -390,6 +390,13 @@ class Library:
                     self.db.execute('UPDATE libraries SET name=? WHERE id=?', (name, identity))
                 except sqlite3.IntegrityError:
                     raise ValueError('A library with that name already exists.') from None
+            elif action == 'delete_library':
+                identity = request.get('library_id')
+                if not isinstance(identity, str) or not self.db.execute('SELECT 1 FROM libraries WHERE id=?', (identity,)).fetchone():
+                    raise ValueError('Choose an existing library.')
+                # Songs stay saved; only the collection and its memberships go.
+                self.db.execute('DELETE FROM memberships WHERE library_id=?', (identity,))
+                self.db.execute('DELETE FROM libraries WHERE id=?', (identity,))
             elif action in ('delete', 'restore'):
                 song_id = request.get('song_id')
                 if not isinstance(song_id, str):

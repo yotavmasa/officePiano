@@ -74,3 +74,18 @@ class ChannelCountTests(unittest.TestCase):
             reopened=Library(folder)
             self.assertEqual(sorted(item['channels'] for item in reopened.snapshot()['songs']),[1,3])
             reopened.db.close()
+
+
+class LibraryDeleteTests(unittest.TestCase):
+    def test_deleting_a_library_keeps_its_songs(self):
+        with tempfile.TemporaryDirectory() as folder:
+            lib=Library(folder)
+            song=lib.add(midi(60),'Kept.mid')
+            identity=lib.mutate({'action':'create','name':'Jazz'})['libraries'][0]['id']
+            lib.mutate({'action':'assign','song_id':song['id'],'library_id':identity})
+            with self.assertRaises(ValueError):lib.mutate({'action':'delete_library','library_id':'missing'})
+            result=lib.mutate({'action':'delete_library','library_id':identity})
+            self.assertEqual(result['libraries'],[])
+            self.assertEqual([item['id'] for item in result['songs']],[song['id']])
+            self.assertEqual(result['songs'][0]['library_ids'],[])
+            lib.db.close()
