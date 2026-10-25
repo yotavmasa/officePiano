@@ -504,6 +504,8 @@ function App() {
   viewRef.current = view;
   const navigate = useCallback(next => {
     const apply = () => { setView(next); setFilter(''); };
+    // The search field morphs between song lists and Discover; the wider version stays visible while it resizes.
+    document.documentElement.dataset.searchMorph = next === 'discover' ? 'grow' : viewRef.current === 'discover' ? 'shrink' : '';
     if (next !== viewRef.current) withViewTransition(apply); else apply();
     const url = new URL(location.href);
     url.searchParams.set('view', next);
