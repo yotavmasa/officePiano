@@ -1402,7 +1402,7 @@ function App() {
           ].map(([mode, title, detail]) => {
             const reason = mode === 'custom' && !adaptationSongId ? 'Load a song to choose its parts.' : mode === 'piano' && !!adaptationSongId && !hasPianoParts ? 'This song has no parts marked as piano.' : '';
             const disabled = busy || !!reason;
-            return <label key={mode} className={`adaptation-mode ${disabled ? 'unavailable' : ''}`} title={reason || undefined}>
+            return <label key={mode} className={`adaptation-mode ${disabled ? 'unavailable' : ''}`} data-reason={reason || undefined} aria-description={reason || undefined}>
               <input type="radio" name="adaptationMode" value={mode} checked={adaptationMode === mode} disabled={disabled} onChange={() => { setAdaptationMode(mode); setAdaptationError(''); }} />
               <span><strong>{title}</strong><small>{detail}</small></span>
             </label>;

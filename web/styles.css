@@ -2083,3 +2083,13 @@ a { color: var(--indigo); }
 @media (max-width: 740px) { .sidebar .side-status, .sidebar .side-wifi { display: none; } }
 .side-status .connection { padding-left: 14px; padding-right: 14px; }
 .player .playing-on, .player .playing-on.is-local { color: var(--mint); font-weight: 400; }
+/* Unavailable playback options explain themselves on hover. */
+.adaptation-mode[data-reason] { position: relative; }
+.adaptation-mode[data-reason]:hover::after {
+  content: attr(data-reason); position: absolute; z-index: 5; left: 34px; bottom: calc(100% - 6px);
+  padding: 6px 10px; border-radius: var(--radius-sm); background: var(--ink); color: var(--white);
+  font-size: 12px; line-height: 1.4; white-space: nowrap; pointer-events: none;
+}
+.adaptation-mode.unavailable[data-reason] { cursor: help; }
+.adaptation-mode.unavailable[data-reason] { opacity: 1; }
+.adaptation-mode.unavailable[data-reason] > * { opacity: .55; }
