@@ -48,7 +48,14 @@ Manual setup supports Python 3.9–3.13 and Node 22.12+. Linux also needs the AL
 - Each library has **Upload MIDI** for multiple files; uploads go directly into that library without entering the queue. Saving playback sound from a song list only saves that song's settings for its next playback; it does not load the song or interrupt the current player.
 - **All songs**: upload multiple MIDI files, search, edit names/artists/albums, favorites, and saved collections.
 - **Sheet music · WIP**: upload PDFs/images/MusicXML. PDF books are scanned for staff lines and song headers. Choose **Browse songs** to preview suggested pieces, edit titles/pages, and select which songs to convert; manual **Split into songs** remains available. Covers and other pages without detected music are skipped. Originals remain downloadable. Scanned pages and unclear headings may need review, and recognition can miss notes or repeats. A lead sheet provides written notes, not a complete piano recording.
-- **Discover**: search BitMidi, FreeMidi, Bushgrafts (jazz piano), Kunst der Fuge (classical), or all sites. Source descriptions help choose a catalog. Classical files are checked when saved to avoid consuming download allowances during search; site download limits still apply. Piano-only files are marked; mixed MIDI is also playable.
+- **Discover**: tick any of BitMidi, FreeMidi, Bushgrafts (jazz piano), Kunst der Fuge (classical), MAESTRO (recorded Disklavier performances) and zzaj (jazz standards backing tracks from zzaj.web.fc2.com). Source descriptions help choose a catalog. Classical files are checked when saved to avoid consuming download allowances during search; site download limits still apply. Piano-only files are marked; mixed MIDI is also playable.
+- **MAESTRO** is searched from a local copy. Install it once (56 MB download, checksum-verified, into `data/catalogs/maestro`):
+
+  ```sh
+  .venv/bin/python scripts/fetch_maestro.py
+  ```
+
+  MAESTRO is by Google Magenta and licensed [CC BY-NC-SA 4.0](https://magenta.withgoogle.com/datasets/maestro): non-commercial use with attribution.
 - Sheet files/books have **Delete** and **Undo**. Removing a book hides its conversion entries and keeps saved MIDI songs. Originals remain locally recoverable. Identical uploads reuse the existing file, and existing duplicate PDF books are combined without removing their songs.
 - Books have distinct cards with their converted songs, PDF pages, and recognition warnings underneath. Sorting stays within each book. Songs from removed books remain available separately.
 - **Browse songs → Printing style** selects standard or experimental jazz note-head templates. Jazz-style printing can benefit from different templates, but it is not guaranteed to improve a score. Converted songs have an editable-score download button: open that MusicXML in a notation editor, correct notes/timing/repeats, then upload the corrected MusicXML. Recognition logs with unresolved rhythms or missing note offsets are shown as warnings, including older conversions.

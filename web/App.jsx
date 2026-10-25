@@ -73,7 +73,7 @@ function reorderedSongIds(fullIds, visibleIds, from, to) {
 const safeSource = source => {
   try {
     const url = new URL(source);
-    return url.protocol === 'https:' && ['bitmidi.com', 'www.bitmidi.com', 'freemidi.org', 'www.freemidi.org', 'bushgrafts.com', 'www.bushgrafts.com', 'kunstderfuge.com', 'www.kunstderfuge.com'].includes(url.hostname) ? url.href : null;
+    return url.protocol === 'https:' && ['bitmidi.com', 'www.bitmidi.com', 'freemidi.org', 'www.freemidi.org', 'bushgrafts.com', 'www.bushgrafts.com', 'kunstderfuge.com', 'www.kunstderfuge.com', 'magenta.withgoogle.com', 'zzaj.web.fc2.com'].includes(url.hostname) ? url.href : null;
   } catch { return null; }
 };
 
@@ -84,14 +84,18 @@ const sourceDescriptions = {
   freemidi: 'FreeMidi: songs across many artists and genres.',
   bushgrafts: 'Bushgrafts: Doug McKenzie’s jazz piano performances, including solo, duet, and trio recordings.',
   kunstderfuge: 'Kunst der Fuge: classical music by composer, including piano works and other instruments. Download limits may apply.',
+  maestro: 'MAESTRO: about 1,300 concert performances recorded on Yamaha Disklavier pianos, stored on this computer. By Google Magenta, CC BY-NC-SA 4.0.',
+  zzaj: 'zzaj: about 100 jazz standards and originals as backing tracks with piano, bass, and a lead line, from the zzaj lead-sheet collection (zzaj.web.fc2.com).',
 };
-const sourceLabels = { bitmidi: 'BitMidi', freemidi: 'FreeMidi', bushgrafts: 'Bushgrafts', kunstderfuge: 'Kunst der Fuge' };
-const sourceKinds = { bushgrafts: 'Jazz', kunstderfuge: 'Classical' };
-const SOURCE_IDS = ['bitmidi', 'freemidi', 'bushgrafts', 'kunstderfuge'];
+const sourceLabels = { bitmidi: 'BitMidi', freemidi: 'FreeMidi', bushgrafts: 'Bushgrafts', kunstderfuge: 'Kunst der Fuge', maestro: 'MAESTRO', zzaj: 'zzaj' };
+const sourceKinds = { bushgrafts: 'Jazz', kunstderfuge: 'Classical', maestro: 'Classical performances', zzaj: 'Jazz standards' };
+const SOURCE_IDS = ['bitmidi', 'freemidi', 'bushgrafts', 'kunstderfuge', 'maestro', 'zzaj'];
+// Selections saved when these were every source; new sources join them.
+const LEGACY_ALL_SOURCES = ['bitmidi,freemidi,bushgrafts,kunstderfuge', 'bitmidi,freemidi,bushgrafts,kunstderfuge,maestro'];
 const providerName = source => {
   try {
     const host = new URL(source).hostname.replace(/^www\./, '');
-    return sourceLabels[{ 'bitmidi.com': 'bitmidi', 'freemidi.org': 'freemidi', 'bushgrafts.com': 'bushgrafts', 'kunstderfuge.com': 'kunstderfuge' }[host]] || 'MIDI source';
+    return sourceLabels[{ 'bitmidi.com': 'bitmidi', 'freemidi.org': 'freemidi', 'bushgrafts.com': 'bushgrafts', 'kunstderfuge.com': 'kunstderfuge', 'magenta.withgoogle.com': 'maestro', 'zzaj.web.fc2.com': 'zzaj' }[host]] || 'MIDI source';
   } catch { return sourceLabels[source] || 'MIDI source'; }
 };
 
@@ -323,7 +327,7 @@ function App() {
   // Ticked catalogs, sent as one comma-separated source; older single choices carry over.
   const [searchSources, setSearchSources] = useState(() => {
     const saved = storage.get('piano-search-sources') || storage.get('piano-search-source');
-    const list = saved === 'all' || !saved ? SOURCE_IDS : saved === 'both' ? ['bitmidi', 'freemidi'] : saved.split(',').filter(id => SOURCE_IDS.includes(id));
+    const list = saved === 'all' || !saved || LEGACY_ALL_SOURCES.includes(saved) ? SOURCE_IDS : saved === 'both' ? ['bitmidi', 'freemidi'] : saved.split(',').filter(id => SOURCE_IDS.includes(id));
     return list.length ? list : SOURCE_IDS;
   });
   const searchSource = searchSources.length === SOURCE_IDS.length ? 'all' : searchSources.join(',');
@@ -1402,7 +1406,7 @@ function App() {
         {renderSavedSongs(listedSongs, view === 'sheets' ? 'loose' : undefined)}
       </section>}
 
-      {view === 'discover' && <section aria-label="Discover music"><div className="discover-toolbar"><form className="search" onSubmit={event => { event.preventDefault(); search(); }}><Icon name="search" /><input type="search" placeholder="Search a song, composer, or artist…" aria-label="Search MIDI sites" required maxLength="120" value={query} onChange={event => setQuery(event.target.value)} /><button className="btn" type="submit">{searching ? <><span className="spinner" />Checking</> : 'Search'}</button></form></div><fieldset className="source-list"><legend>Sources</legend>{SOURCE_IDS.map(id => <label key={id} className={`source-option ${searchSources.includes(id) ? 'is-on' : ''}`} title={searchSources.length === 1 && searchSources.includes(id) ? `${sourceDescriptions[id]} At least one source stays selected.` : sourceDescriptions[id]}><input type="checkbox" checked={searchSources.includes(id)} onChange={() => toggleSearchSource(id)} /><span>{sourceLabels[id]}{sourceKinds[id] && <small> · {sourceKinds[id]}</small>}</span></label>)}</fieldset><div className="search-warnings" role="status">{searchData.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div><p className="section-note" style={{ margin: '0 0 14px' }} aria-live="polite">{searching ? 'Searching catalogs… This can take a moment.' : searchData.searched ? `${searchData.results.length}${Number.isInteger(searchData.totalMatches) ? ` of ${searchData.totalMatches}` : ''} songs shown · ${searchData.results.filter(result => result.piano_only === true).length} piano-only${searchData.hasMore ? ' · More available below' : ''}` : ''}</p><div className="song-list results">{searchData.results.length ? searchData.results.map((result, index) => <SearchResult key={`${result.url}-${index}`} result={result} libraries={library.libraries} busy={busy} onSave={saveResult} notice={notice} />) : searchData.searched ? <EmptyState title="No songs found in this batch." description="Try the next results, or search another title or composer." /> : <EmptyState icon="search" title="Find a song" description="Try a song title, artist, or composer." />}</div>{searchData.hasMore && <button className="btn light load-more" disabled={searching} onClick={() => search(true)}>Load more songs</button>}</section>}
+      {view === 'discover' && <section aria-label="Discover music"><div className="discover-toolbar"><form className="search" onSubmit={event => { event.preventDefault(); search(); }}><Icon name="search" /><input type="search" placeholder="Search a song, composer, or artist…" aria-label="Search MIDI sites" required maxLength="120" value={query} onChange={event => setQuery(event.target.value)} /><button className="btn" type="submit">{searching ? <><span className="spinner" />Checking</> : 'Search'}</button></form></div><fieldset className="source-list"><legend>Sources</legend><div className="source-options">{SOURCE_IDS.map(id => <label key={id} className={`source-option ${searchSources.includes(id) ? 'is-on' : ''}`} title={searchSources.length === 1 && searchSources.includes(id) ? `${sourceDescriptions[id]} At least one source stays selected.` : sourceDescriptions[id]}><input type="checkbox" checked={searchSources.includes(id)} onChange={() => toggleSearchSource(id)} /><span>{sourceLabels[id]}{sourceKinds[id] && <small> · {sourceKinds[id]}</small>}</span></label>)}</div></fieldset><div className="search-warnings" role="status">{searchData.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div><p className="section-note" style={{ margin: '0 0 14px' }} aria-live="polite">{searching ? 'Searching catalogs… This can take a moment.' : searchData.searched ? `${searchData.results.length}${Number.isInteger(searchData.totalMatches) ? ` of ${searchData.totalMatches}` : ''} songs shown · ${searchData.results.filter(result => result.piano_only === true).length} piano-only${searchData.hasMore ? ' · More available below' : ''}` : ''}</p><div className="song-list results">{searchData.results.length ? searchData.results.map((result, index) => <SearchResult key={`${result.url}-${index}`} result={result} libraries={library.libraries} busy={busy} onSave={saveResult} notice={notice} />) : searchData.searched ? <EmptyState title="No songs found in this batch." description="Try the next results, or search another title or composer." /> : <EmptyState icon="search" title="Find a song" description="Try a song title, artist, or composer." />}</div>{searchData.hasMore && <button className="btn light load-more" disabled={searching} onClick={() => search(true)}>Load more songs</button>}</section>}
 
     </main>
     {queueVisible && <aside className={`queue-panel ${queueIsDocked ? '' : 'is-open'} ${draggingSong ? 'is-drop-ready' : ''} ${queueDrop ? 'is-drop-target' : ''}`} id="queue-panel" aria-label="Queue" {...queueDropProps}>

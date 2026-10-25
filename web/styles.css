@@ -2119,8 +2119,9 @@ a { color: var(--indigo); }
 .top-notice-close svg { width: 14px; height: 14px; }
 /* Reserve the scrollbar's space so short and long pages keep the same layout width. */
 html { scrollbar-gutter: stable; }
-.source-list { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0 20px; padding: 0; border: 0; }
-.source-list legend { float: left; margin-right: 6px; font-family: var(--font-mono); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--slate); }
+.source-list { margin: 14px 0 20px; padding: 0; border: 0; min-width: 0; }
+.source-options { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.source-list legend { float: left; margin: 9px 14px 0 0; padding: 0; font-family: var(--font-mono); font-size: 12px; letter-spacing: 1px; text-transform: uppercase; color: var(--slate); }
 .source-option { display: inline-flex; align-items: center; gap: 7px; padding: 6px 12px; border: 1.33px solid var(--indigo-40); border-radius: var(--radius-pill); font-size: 13px; color: var(--ink); cursor: pointer; }
 .source-option.is-on { border-color: var(--indigo); background: var(--periwinkle-20); color: var(--indigo); }
 .source-option input { margin: 0; accent-color: var(--indigo); }
