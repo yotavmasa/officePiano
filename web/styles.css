@@ -1995,6 +1995,7 @@ h2,
 .player .art, .mini-player-art { view-transition-name: now-playing-art; }
 .queue-block { view-transition-name: queue-inline; }
 .queue-docked .queue-panel { view-transition-name: queue-side; }
+.topbar-status { view-transition-name: topbar-status; }
 ::view-transition-group(*), ::view-transition-old(*), ::view-transition-new(*) { animation-duration: 300ms; animation-timing-function: cubic-bezier(.2, 0, 0, 1); }
 /* The player card morphs as a solid shape; its snapshots are cropped, never stretched. */
 ::view-transition-group(now-playing) { background: var(--indigo); border-radius: var(--radius-card); overflow: clip; }
@@ -2061,3 +2062,4 @@ a { color: var(--indigo); }
 }
 @keyframes notes-open { from { opacity: 0; transform: translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) { .falling-notes { animation: none; } }
+.topbar { justify-content: flex-end; }
