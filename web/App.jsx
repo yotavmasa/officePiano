@@ -1379,25 +1379,26 @@ function App() {
     {dialog?.type === 'adaptation' && <Dialog title="Playback sound" closeDisabled={busy} onClose={() => { adaptationRequest.current += 1; setDialog(null); }}>
       {adaptationSong && <p className="adaptation-selected-song">{songTitle(adaptationSong.name)}</p>}
       {soundReport?.notice && adaptationSongId && adaptationSongId === status?.song_id && <p className="adaptation-report">{soundReport.notice}</p>}
-      <p className="dialog-hint">Choose which MIDI parts reach the piano. Saved songs and downloaded files keep their original notes.</p>
+      <p className="dialog-hint">Choose which parts the piano plays. The original file is never changed. On this computer, songs always play every part except drums.</p>
       {adaptationLoading ? <p className="dialog-hint" role="status"><span className="spinner" /> Checking song parts…</p> : <>
         <fieldset className="adaptation-modes">
           <legend className="dialog-label">Play this way</legend>
           {[
             ['no_drums', 'All parts except drums · Default', 'Play every instrument part except drums. Keep the original notes, timing, and dynamics.'],
-            ['original', 'Original MIDI', 'All parts, including drums, as they are in the file.'],
+            ['original', 'Original MIDI · All parts', 'Including drums, exactly as in the file.'],
             ['piano', 'Piano parts only', 'Keep parts marked as piano; leave the other instruments out.'],
             ['smart', 'Smart piano · Experimental', 'Choose suitable parts and merge their notes into one piano track. Experimental.'],
             ['custom', 'Choose parts', 'Pick the parts you want to hear in this song.'],
           ].map(([mode, title, detail]) => {
-            const disabled = busy || mode === 'custom' && !adaptationSongId || mode === 'piano' && !!adaptationSongId && !hasPianoParts;
-            return <label key={mode} className={`adaptation-mode ${disabled ? 'unavailable' : ''}`}>
+            const reason = mode === 'custom' && !adaptationSongId ? 'Load a song to choose its parts.' : mode === 'piano' && !!adaptationSongId && !hasPianoParts ? 'This song has no parts marked as piano.' : '';
+            const disabled = busy || !!reason;
+            return <label key={mode} className={`adaptation-mode ${disabled ? 'unavailable' : ''}`} title={reason || undefined}>
               <input type="radio" name="adaptationMode" value={mode} checked={adaptationMode === mode} disabled={disabled} onChange={() => { setAdaptationMode(mode); setAdaptationError(''); }} />
               <span><strong>{title}</strong><small>{detail}</small></span>
             </label>;
           })}
         </fieldset>
-        {!adaptationSongId && <p className="dialog-hint">This becomes the playback setting for the next song. Load a song to choose individual parts.</p>}
+        {!adaptationSongId && <p className="dialog-hint">No song is loaded, so this sets the default. Load a song to choose its parts.</p>}
         {!!adaptationSongId && !hasPianoParts && <p className="dialog-hint">This song has no parts marked as piano. Try Smart piano or choose parts yourself.</p>}
         {adaptationMode === 'smart' && adaptationData?.analysis?.recommended_parts?.length > 0 && <p className="dialog-hint">Suggested parts: {analysedParts.filter(part => adaptationData.analysis.recommended_parts.includes(part.id)).map(part => part.name || part.instrument || `Part ${part.id}`).join(', ')}.</p>}
         {adaptationMode === 'custom' && <div className="adaptation-parts" aria-label="Song parts">
@@ -1408,7 +1409,7 @@ function App() {
         </div>}
       </>}
       {(adaptationError || adaptationAttempted && notice && !notice.success) && <p className="message visible" role="alert">{adaptationError || notice.text}</p>}
-      <p className="dialog-hint">All playback choices are saved for this song and restored whenever it plays. With no song selected, you set the default for songs without saved settings.</p><p className="adaptation-stop-note">{dialog.applyNow ? 'Applying a change stops playback. Press Play afterward.' : 'Saves to this song for its next playback. The current player keeps playing.'}</p>
+      <p className="adaptation-stop-note">{`${adaptationSongId ? 'Saved for this song. ' : ''}${dialog.applyNow ? 'Applying stops playback.' : 'Takes effect the next time it plays.'}`}</p>
       <div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => { adaptationRequest.current += 1; setDialog(null); }}>Cancel</button><button className="btn" disabled={busy || adaptationLoading || !adaptationData || adaptationMode === 'custom' && (!adaptationSongId || !adaptationParts.length) || adaptationMode === 'piano' && !!adaptationSongId && !hasPianoParts} onClick={applyAdaptation}>{dialog.applyNow ? 'Apply sound' : 'Save settings'}</button></div>
     </Dialog>}
 
