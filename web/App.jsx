@@ -54,7 +54,6 @@ function withViewTransition(apply) {
   transition.ready.catch(run);
   transition.finished.catch(() => {});
 }
-const SONG_DRAG_TYPE = 'application/x-office-piano-song';
 const SEEK_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
 const time = seconds => {
   const value = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -116,7 +115,6 @@ function Icon({ name, style }) {
     upload: <path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5" />,
     download: <path d="M12 3v13m-5-5 5 5 5-5M4 16v5h16v-5" />,
     arrow: <path d="m9 6 6 6-6 6" />,
-    grip: <><circle cx="9" cy="5" r="1" /><circle cx="15" cy="5" r="1" /><circle cx="9" cy="12" r="1" /><circle cx="15" cy="12" r="1" /><circle cx="9" cy="19" r="1" /><circle cx="15" cy="19" r="1" /></>,
     book: <><path d="M12 5c-3-2-6-2-9-1v15c3-1 6-1 9 1 3-2 6-2 9-1V4c-3-1-6-1-9 1Z M12 5v15" /></>,
     folder: <path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" />,
     wifi: <><path d="M3 8a15 15 0 0 1 18 0M6 12a10 10 0 0 1 12 0m-9 4a5 5 0 0 1 6 0" /><circle cx="12" cy="20" r=".5" fill="currentColor" /></>,
@@ -417,7 +415,6 @@ function App() {
   const [draggingSong, setDraggingSong] = useState('');
   const [queueDrop, setQueueDrop] = useState(null);
   const [libraryDrop, setLibraryDrop] = useState('');
-  const songDragBlocked = useRef(false);
   const queueClose = useRef(null);
   const queueTrigger = useRef(null);
   useEffect(() => {
@@ -734,10 +731,16 @@ function App() {
       announce('The song list changed. Try moving the song again.');
       return;
     }
+    // Show the new order right away so the row stays where it was dropped; refresh() restores the saved order if the request fails.
     if (drag.kind === 'queue') {
+      const songIds = reorderedSongIds(originalIds, originalIds, drag.from, drag.to);
+      setStatus(previous => previous && { ...previous, queue: { ...previous.queue, song_ids: songIds } });
       await runTask.current(() => post('/api/queue', { action: 'move', from: drag.from, to: drag.to, expected_song_ids: originalIds }));
     } else {
       const fullOrder = reorderedSongIds(now.fullIds, originalIds, drag.from, drag.to);
+      setLibrary(previous => now.libraryId
+        ? { ...previous, libraries: previous.libraries.map(item => item.id === now.libraryId ? { ...item, song_ids: fullOrder } : item) }
+        : { ...previous, songs: fullOrder.map(id => previous.songs.find(song => song.id === id)).filter(Boolean) });
       await runTask.current(() => post('/api/library', { action: 'reorder', library_id: now.libraryId, song_ids: fullOrder }));
     }
   }
@@ -1171,7 +1174,7 @@ function App() {
     return <SortableList items={songs.map(song => song.id)} getLabel={id => songTitle(library.songs.find(song => song.id === id)?.name)} onStart={from => { startReorder('songs', from, groupId); setDraggingSong(songs[from]?.id || ''); }} onEnd={to => { endSongDrag(); return finishReorder(to); }} onCancel={() => { endSongDrag(); cancelReorder(); }} {...songQueueDrag}>
         <div className="song-list">{!songs.length ? <EmptyState icon={filter ? 'search' : view === 'favorites' ? 'heart' : 'note'} title={filter ? 'No matching pieces' : view === 'favorites' ? 'Keep your favorites close' : 'Make room for a little music.'} description={filter ? 'Try another title.' : view === 'favorites' ? 'Tap the heart beside a saved song to keep it here.' : view === 'sheets' ? 'Upload sheet music above. Converted pieces will appear here.' : 'Upload a MIDI file, or find a new piece in Discover.'} button={filter || view === 'favorites' || view === 'sheets' ? null : 'Discover music'} onClick={() => navigate('discover')} /> : <><div className="list-labels saved-labels"><label className="song-check" title="Select all"><input type="checkbox" aria-label="Select all songs in this list" checked={songs.every(song => selectedIds.includes(song.id))} ref={element => { if (element) element.indeterminate = songs.some(song => selectedIds.includes(song.id)) && !songs.every(song => selectedIds.includes(song.id)); }} onChange={event => setSelected(previous => event.target.checked ? [...new Set([...previous, ...songs.map(song => song.id)])] : previous.filter(id => !songs.some(song => song.id === id)))} /></label><span /><span>Piece</span><span className="channels-label">Channels</span><span>Time</span><span /></div>{songs.map((song, index) => {
           const piano = song.piano_only === true;
-          return <SortableItem key={song.id} id={song.id} disabled={busy || songs.length < 2}>{({ rowProps, handleProps }) => <div {...rowProps} {...songDragProps(song)} className={`song-row saved-song ${playerSongId === song.id ? 'is-current' : ''} ${draggingSong === song.id ? 'is-queue-dragging' : ''} ${selectedIds.includes(song.id) ? 'is-selected' : ''}`} onClick={event => songRowClick(event, song)} onContextMenu={event => { event.preventDefault(); openSongMenu(song, event.clientX, event.clientY, event.currentTarget.querySelector('.song-more')); }}><label className="song-check" title={`Select ${song.name}`}><input type="checkbox" checked={selectedIds.includes(song.id)} aria-label={`Select ${song.name}`} onChange={() => toggleSelected(song.id)} /></label><div className="mini-art"><button className="sort-handle" disabled={busy || songs.length < 2} aria-label={`Reorder song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button>{coverFor(song) ? <img className="song-row-icon song-row-cover" src={coverFor(song)} alt="" loading="lazy" onError={() => setBrokenCovers(previous => new Set(previous).add(song.id))} /> : <span className="song-row-icon" aria-hidden="true"><Icon name="note" /></span>}</div><div className="song-info"><button className="song-name song-name-button" title={`Play ${song.name}`} aria-label={`Play ${song.name}`} disabled={onDevice ? local.loading : busy} onClick={() => playSong(song, { showPlayer: false })}>{songTitle(song.name)}</button>{(song.artist || song.album) && <div className="song-record">{[song.artist, song.album].filter(Boolean).join(' · ')}</div>}<div className="song-sub">{piano ? 'Piano only' : 'Other MIDI'} · {song.source_url ? `From ${providerName(song.source_url)}` : song.source_kind === 'sheet' ? 'From sheet music' : 'Uploaded'} · Saved locally</div>{groupId && (sheets.song_sources || []).filter(source => source.song_id === song.id && source.source_id === groupId).slice(0, 1).map(source => <div key={source.song_id}>{source.pages?.length > 0 && <p className="sheet-song-pages">PDF {source.pages.length === 1 ? 'page' : 'pages'} {source.pages.join(', ')}</p>}{source.warning && <p className="sheet-file-warning">{source.warning}</p>}</div>)}</div><span className="channels" title="MIDI channels that play notes">{song.channels ?? '–'}</span><span className="duration">{time(song.duration_seconds)}</span><button type="button" className="song-more" aria-label={`More actions for ${song.name}`} title="More actions" aria-haspopup="menu" aria-expanded={songMenu?.songId === song.id} onClick={event => { const box = event.currentTarget.getBoundingClientRect(); openSongMenu(song, box.right - 200, box.bottom + 4, event.currentTarget); }}><Icon name="more" /></button></div>}</SortableItem>;
+          return <SortableItem key={song.id} id={song.id} disabled={busy}>{rowProps => <div {...rowProps} className={`song-row saved-song ${playerSongId === song.id ? 'is-current' : ''} ${draggingSong === song.id ? 'is-queue-dragging' : ''} ${selectedIds.includes(song.id) ? 'is-selected' : ''}`} onClick={event => songRowClick(event, song)} onContextMenu={event => { event.preventDefault(); openSongMenu(song, event.clientX, event.clientY, event.currentTarget.querySelector('.song-more')); }}><label className="song-check" title={`Select ${song.name}`}><input type="checkbox" checked={selectedIds.includes(song.id)} aria-label={`Select ${song.name}`} onChange={() => toggleSelected(song.id)} /></label><div className="mini-art">{coverFor(song) ? <img className="song-row-icon song-row-cover" src={coverFor(song)} alt="" loading="lazy" onError={() => setBrokenCovers(previous => new Set(previous).add(song.id))} /> : <span className="song-row-icon" aria-hidden="true"><Icon name="note" /></span>}</div><div className="song-info"><button className="song-name song-name-button" title={`Play ${song.name}`} aria-label={`Play ${song.name}`} disabled={onDevice ? local.loading : busy} onClick={() => playSong(song, { showPlayer: false })}>{songTitle(song.name)}</button>{(song.artist || song.album) && <div className="song-record">{[song.artist, song.album].filter(Boolean).join(' · ')}</div>}<div className="song-sub">{piano ? 'Piano only' : 'Other MIDI'} · {song.source_url ? `From ${providerName(song.source_url)}` : song.source_kind === 'sheet' ? 'From sheet music' : 'Uploaded'} · Saved locally</div>{groupId && (sheets.song_sources || []).filter(source => source.song_id === song.id && source.source_id === groupId).slice(0, 1).map(source => <div key={source.song_id}>{source.pages?.length > 0 && <p className="sheet-song-pages">PDF {source.pages.length === 1 ? 'page' : 'pages'} {source.pages.join(', ')}</p>}{source.warning && <p className="sheet-file-warning">{source.warning}</p>}</div>)}</div><span className="channels" title="MIDI channels that play notes">{song.channels ?? '–'}</span><span className="duration">{time(song.duration_seconds)}</span><button type="button" className="song-more" aria-label={`More actions for ${song.name}`} title="More actions" aria-haspopup="menu" aria-expanded={songMenu?.songId === song.id} onClick={event => { const box = event.currentTarget.getBoundingClientRect(); openSongMenu(song, box.right - 200, box.bottom + 4, event.currentTarget); }}><Icon name="more" /></button></div>}</SortableItem>;
         })}</>}</div></SortableList>;
   }
 
@@ -1181,7 +1184,7 @@ function App() {
     { key: 'next', title: 'Next up', start: hasCurrent ? activeIndex + 1 : 0, end: queueIds.length },
   ].filter(section => section.end > section.start);
   const queueShown = (hasCurrent ? 1 : 0) + queueSections.reduce((total, section) => total + section.end - section.start, 0);
-  const queueRow = (index, section = null, rowProps = {}, handleProps = {}) => {
+  const queueRow = (index, section = null, rowProps = {}) => {
     const song = songAt(index);
     const isCurrent = !section;
     const drop = queueDrop?.row === index ? queueDrop.after ? 'drop-after' : 'drop-before' : '';
@@ -1190,7 +1193,7 @@ function App() {
     return <div {...rowProps} className={`queue-row ${isCurrent ? 'is-current' : ''} ${picked ? 'is-selected' : ''} ${drop}`} role="listitem" data-queue-index={index} data-queue-current={isCurrent ? 'true' : undefined} onClick={event => queueRowClick(event, index, isCurrent)} onContextMenu={event => { event.preventDefault(); openQueueMenu(index, event.clientX, event.clientY, event.currentTarget.querySelector('.song-more')); }}>
       <span className="queue-number">{isCurrent
         ? isPlaying ? <span className="equalizer" aria-hidden="true"><i /><i /><i /></span> : <Icon name={isPaused ? 'pause' : 'play'} />
-        : <><button className="sort-handle" disabled={busy || section.end - section.start < 2} aria-label={`Reorder queued song: ${song.name}`} title="Drag to reorder, or press Space then arrow keys" {...handleProps}><Icon name="grip" /></button><span className="queue-position">{String(index - section.start + 1).padStart(2, '0')}</span></>}</span>
+        : <span className="queue-position">{String(index - section.start + 1).padStart(2, '0')}</span>}</span>
       <div className="song-info"><div className="song-name" title={song.name}>{songTitle(song.name)}</div><div className="queue-status">{[song.artist, song.piano_only === true ? 'Piano only' : 'Other MIDI'].filter(Boolean).join(' · ')}</div></div>
       <span className="duration">{time(song.duration_seconds)}</span>
       <button type="button" className="song-more" aria-label={`More actions for queued song: ${song.name}`} title="More actions" aria-haspopup="menu" aria-expanded={songMenu?.kind === 'queue' && songMenu.index === index} onClick={event => { const box = event.currentTarget.getBoundingClientRect(); openQueueMenu(index, box.right - 200, box.bottom + 4, event.currentTarget); }}><Icon name="more" /></button>
@@ -1260,7 +1263,7 @@ function App() {
             const entries = queueEntryIds.slice(section.start, section.end);
             return <div className="queue-section" key={section.key}><h3 className="queue-section-title">{section.title}</h3>
               <SortableList items={entries} getLabel={entry => songTitle(songAt(queueEntryIds.indexOf(entry))?.name)} onStart={from => startReorder('queue', from + section.start)} onEnd={to => { setLibraryDrop(''); return finishReorder(to + section.start); }} onCancel={() => { setLibraryDrop(''); cancelReorder(); }} {...queueLibraryDrag}>
-                <div className="song-list" role="list" aria-label={section.title}>{entries.map((entry, offset) => songAt(section.start + offset) && <SortableItem key={entry} id={entry} disabled={busy || entries.length < 2}>{({ rowProps, handleProps }) => queueRow(section.start + offset, section, rowProps, handleProps)}</SortableItem>)}</div>
+                <div className="song-list" role="list" aria-label={section.title}>{entries.map((entry, offset) => songAt(section.start + offset) && <SortableItem key={entry} id={entry} disabled={busy}>{rowProps => queueRow(section.start + offset, section, rowProps)}</SortableItem>)}</div>
               </SortableList></div>;
           })}
         </>}
@@ -1277,36 +1280,6 @@ function App() {
     storage.set('piano-queue-panel', visible ? 'shown' : 'hidden');
     if (animate) withViewTransition(() => setQueueDocked(visible)); else setQueueDocked(visible);
   }
-  const songDragProps = song => ({
-    draggable: !busy,
-    onPointerDownCapture: event => { songDragBlocked.current = !!event.target.closest('.sort-handle, input, textarea'); },
-    onDragStart: event => {
-      if (songDragBlocked.current) return event.preventDefault();
-      event.dataTransfer.setData(SONG_DRAG_TYPE, song.id);
-      event.dataTransfer.setData('text/plain', songTitle(song.name));
-      event.dataTransfer.effectAllowed = 'copy';
-      setDraggingSong(song.id);
-    },
-    onDragEnd: () => { setDraggingSong(''); setQueueDrop(null); setLibraryDrop(''); },
-  });
-  const carriesSong = event => event.dataTransfer?.types?.includes(SONG_DRAG_TYPE);
-  const libraryDropProps = libraryId => ({
-    'data-library-id': libraryId,
-    onDragOver: event => {
-      if (!carriesSong(event)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'copy';
-      if (libraryDrop !== libraryId) setLibraryDrop(libraryId);
-    },
-    onDragLeave: event => { if (!event.currentTarget.contains(event.relatedTarget)) setLibraryDrop(''); },
-    onDrop: event => {
-      if (!carriesSong(event)) return;
-      event.preventDefault();
-      setLibraryDrop('');
-      setDraggingSong('');
-      addToLibrary(event.dataTransfer.getData(SONG_DRAG_TYPE), libraryId);
-    },
-  });
   function queueDropTarget(event) {
     const row = event.target.closest?.('[data-queue-index]');
     if (!row) return { index: queueIds.length, row: -1, after: false };
@@ -1316,25 +1289,6 @@ function App() {
     const after = event.clientY > box.top + box.height / 2;
     return { index: after ? index + 1 : index, row: index, after };
   }
-  const queueDropProps = {
-    onDragOver: event => {
-      if (!carriesSong(event)) return;
-      event.preventDefault();
-      event.dataTransfer.dropEffect = 'copy';
-      const target = queueDropTarget(event);
-      if (target.index !== queueDrop?.index || target.row !== queueDrop?.row) setQueueDrop(target);
-    },
-    onDragLeave: event => { if (!event.currentTarget.contains(event.relatedTarget)) setQueueDrop(null); },
-    onDrop: event => {
-      if (!carriesSong(event)) return;
-      event.preventDefault();
-      const songId = event.dataTransfer.getData(SONG_DRAG_TYPE);
-      const { index } = queueDropTarget(event);
-      setQueueDrop(null);
-      setDraggingSong('');
-      if (songId) queueAction('add', { song_id: songId, index, expected_song_ids: queueIds }, 'Added to the queue.');
-    },
-  };
 
   // Online count and piano connection: in the sidebar on desktop, in the top bar on phones.
   const connectionStatus = <><span className={`online-count ${connectionError ? 'offline' : ''}`} title="Browsers connected to this piano app. Closed browsers disappear within 90 seconds."><span className="online-dot" />{connectionError ? 'Offline' : status ? `${status.online_count ?? 1} online` : 'Connecting…'}</span><button className={`connection ${onDevice || playable ? 'connected' : ''}`} title="Connect to a device" onClick={openConnection}><span className="dot" /><span className="label">{onDevice ? `Playing on ${thisDevice.name}` : connectionError ? 'Piano computer unavailable' : device?.name || (wanted ? 'Waiting for your piano' : status ? 'Connect your piano' : 'Connecting to your Mac…')}</span><Icon name="arrow" /></button></>;
@@ -1348,7 +1302,7 @@ function App() {
         {[['player', 'Player', 'play', queueIds.length], ['all', 'All songs', 'grid', library.songs.filter(song => song.source_kind !== 'sheet').length], ['favorites', 'Favorites', 'heart', library.songs.filter(song => song.favorite).length], ['discover', 'Discover', 'search']].map(([id, label, icon, count]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{label}{count !== undefined && <span className="count">{count}</span>}</button>)}
       </nav>
       <div className="collections"><div className="side-heading"><span className="eyebrow">Your libraries</span><button className="icon-button" aria-label="Create library" title="Create library" onClick={() => { setLibraryName(''); setDialog({ type: 'create' }); }}><Icon name="plus" /></button></div>
-        <nav className="nav library-nav" aria-label="Libraries">{library.libraries.map(item => <button key={item.id} {...libraryDropProps(item.id)} onContextMenu={event => openLibraryMenu(event, item)} aria-haspopup="menu" className={`${view === item.id ? 'active' : ''} ${draggingSong ? 'is-drop-ready' : ''} ${libraryDrop === item.id ? 'is-drop-target' : ''}`} aria-current={view === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><Icon name="folder" /><span className="name">{item.name}</span><span className="count">{library.songs.filter(song => (song.library_ids || []).includes(item.id)).length}</span></button>)}</nav>
+        <nav className="nav library-nav" aria-label="Libraries">{library.libraries.map(item => <button key={item.id} data-library-id={item.id} onContextMenu={event => openLibraryMenu(event, item)} aria-haspopup="menu" className={`${view === item.id ? 'active' : ''} ${draggingSong ? 'is-drop-ready' : ''} ${libraryDrop === item.id ? 'is-drop-target' : ''}`} aria-current={view === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><Icon name="folder" /><span className="name">{item.name}</span><span className="count">{library.songs.filter(song => (song.library_ids || []).includes(item.id)).length}</span></button>)}</nav>
       </div>
       <div className="collections wip-section"><div className="side-heading"><button type="button" className="side-toggle" aria-expanded={betaVisible} aria-controls="beta-features" onClick={() => setBetaOpen(open => { storage.set('piano-beta-open', open ? 'off' : 'on'); return !open; })}><span className="eyebrow">Beta features</span><Icon name="arrow" style={{ transform: betaVisible ? 'rotate(90deg)' : 'none' }} /></button></div>
         {betaVisible && <nav className="nav library-nav" id="beta-features" aria-label="Beta features"><button className={view === 'sheets' ? 'active' : ''} aria-current={view === 'sheets' ? 'page' : undefined} onClick={() => navigate('sheets')}><Icon name="book" /><span className="name">Sheet music</span><span className="count">{library.songs.filter(song => song.source_kind === 'sheet').length}</span></button></nav>}
@@ -1361,7 +1315,7 @@ function App() {
       {notice && <div className={`message visible top-notice ${notice.success ? 'success' : ''}`} role={notice.success ? 'status' : 'alert'} aria-live="polite" onMouseEnter={() => setNoticePaused(true)} onMouseLeave={() => setNoticePaused(false)} onFocus={() => setNoticePaused(true)} onBlur={() => setNoticePaused(false)}><span className="top-notice-text">{notice.text}{notice.undoSheetId && <button className="btn light small" style={{ marginLeft: 12 }} onClick={async () => { const result = await run(() => post('/api/sheets/restore', { id: notice.undoSheetId }), 'File restored.'); if (result) await refreshSheets(); }}>Undo</button>}{notice.undoSongIds && <button className="btn light small" style={{ marginLeft: 12 }} onClick={() => eachSong(notice.undoSongIds, songId => post('/api/library', { action: 'restore', song_id: songId }), notice.undoSongIds.length === 1 ? 'Song restored.' : `${countSongs(notice.undoSongIds.length)} restored.`)}>Undo</button>}</span><button type="button" className="top-notice-close" aria-label="Dismiss message" title="Dismiss" onClick={() => setNotice(null)}><Icon name="close" /></button></div>}
 
       {view === 'player' && <section aria-label="Player" className={queueBeside ? 'player-fit' : undefined}>
-        <section className="player" aria-label="Piano player"><div className={`art ${showArtwork ? 'has-cover' : ''}`} aria-hidden={showArtwork || spotifyLink ? undefined : true}>{canLoadArtwork && <img className={`album-cover ${showArtwork ? 'is-ready' : ''}`} src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} />}{!showArtwork && <div className="keys">{[true, true, false, true, true, true, false].map((black, index) => <i className={black ? 'black' : ''} key={index} />)}</div>}{spotifyLink && <a className="spotify-cover-link" href={spotifyLink} target="_blank" rel="noopener noreferrer" aria-label="Find this album on Spotify" title="Find this album on Spotify"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1ed760" stroke="none"/><path d="M5 8c5-1.7 10-1.2 14 1M6 12c4-1.3 8-1 12 1M7 16c3-.8 6-.5 9 1" fill="none" stroke="#121d16" strokeWidth="1.7" strokeLinecap="round"/></svg>Spotify ↗</span></a>}</div><div className="player-content"><div className="eyebrow"><span className="playing-pulse" /><span>{onDevice && local.loading ? 'Loading…' : isPlaying ? 'Now playing' : isPaused ? 'Paused' : 'Ready when you are'}</span></div><h2 className="song-title">{playerName ? songTitle(playerName) : 'Waiting for a song'}</h2><p className="player-record">{[playerSong?.artist, playerSong?.album].filter(Boolean).join(' · ') || '\u00a0'}</p><p className="song-meta">{playerName ? [playerSong?.piano_only === true ? 'Piano only' : 'Other MIDI', playerSong?.source_url ? providerName(playerSong.source_url) : playerSong?.source_kind === 'sheet' ? 'Sheet music' : ''].filter(Boolean).join(' · ') : '\u00a0'}</p><div className="progress-row"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Song timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
+        <section className="player" aria-label="Piano player"><div className="art-column"><div className={`art ${showArtwork ? 'has-cover' : ''}`} aria-hidden="true">{canLoadArtwork && <img className={`album-cover ${showArtwork ? 'is-ready' : ''}`} src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} />}{!showArtwork && <div className="keys">{[true, true, false, true, true, true, false].map((black, index) => <i className={black ? 'black' : ''} key={index} />)}</div>}</div>{spotifyLink && <a className="spotify-cover-link" href={spotifyLink} target="_blank" rel="noopener noreferrer" aria-label="Find this album on Spotify" title="Find this album on Spotify"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1ed760" stroke="none"/><path d="M5 8c5-1.7 10-1.2 14 1M6 12c4-1.3 8-1 12 1M7 16c3-.8 6-.5 9 1" fill="none" stroke="#121d16" strokeWidth="1.7" strokeLinecap="round"/></svg>Spotify ↗</span></a>}</div><div className="player-content"><div className="eyebrow"><span className="playing-pulse" /><span>{onDevice && local.loading ? 'Loading…' : isPlaying ? 'Now playing' : isPaused ? 'Paused' : 'Ready when you are'}</span></div><h2 className="song-title">{playerName ? songTitle(playerName) : 'Waiting for a song'}</h2><p className="player-record">{[playerSong?.artist, playerSong?.album].filter(Boolean).join(' · ') || '\u00a0'}</p><p className="song-meta">{playerName ? [playerSong?.piano_only === true ? 'Piano only' : 'Other MIDI', playerSong?.source_url ? providerName(playerSong.source_url) : playerSong?.source_kind === 'sheet' ? 'Sheet music' : ''].filter(Boolean).join(' · ') : '\u00a0'}</p><div className="progress-row"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Song timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
           <div className="player-bottom"><div className="controls"><button className="icon-button" aria-label="Previous song" title="Previous song" disabled={!canPrevious} onClick={() => playerSkip(-1)}><Icon name="previous" /></button><button className="play-button" aria-label={isPaused ? 'Resume' : 'Play'} title={isPaused ? 'Resume' : 'Play'} disabled={!canPlay || isPlaying} onClick={playerPlay}>{onDevice && local.loading ? <span className="spinner" /> : <Icon name="play" />}</button><button className="icon-button" aria-label="Pause" title="Pause" disabled={onDevice ? !isPlaying : busy || !playing} onClick={playerPause}><Icon name="pause" /></button><button className="icon-button" aria-label="Next song" title="Next song" disabled={!canNext} onClick={() => playerSkip(1)}><Icon name="next" /></button><button className="icon-button" aria-label={onDevice ? 'Stop' : 'Stop and release keys'} title={onDevice ? 'Stop' : 'Stop & release keys'} onClick={playerStop} disabled={onDevice ? local.state === 'stopped' && !local.loading : busy}><Icon name="stop" /></button></div>
             <div className="player-tools"><button type="button" className="sound-button" onClick={openAdaptation} disabled={busy} aria-label={`Playback sound: ${soundName}. Change playback sound`} title="Change playback sound"><Icon name="piano" /><span className="sound-button-label">{soundName}</span>{soundSettings.mode === 'smart' && <span className="experimental-badge">Experimental</span>}</button><DevicePicker {...pickerProps} />{onDevice
               ? <div className="volume-wrap"><label htmlFor="volume" aria-label="Volume on this device"><Icon name="volume" /></label><input id="volume" type="range" min="0" max="100" value={local.volume} aria-label="Volume on this device" onChange={event => local.setVolume(Number(event.target.value))} /><output htmlFor="volume">{local.volume}%</output></div>
@@ -1409,7 +1363,7 @@ function App() {
       {view === 'discover' && <section aria-label="Discover music"><div className="discover-toolbar"><form className="search" onSubmit={event => { event.preventDefault(); search(); }}><Icon name="search" /><input type="search" placeholder="Search a song, composer, or artist…" aria-label="Search MIDI sites" required maxLength="120" value={query} onChange={event => setQuery(event.target.value)} /><button className="btn" type="submit">{searching ? <><span className="spinner" />Checking</> : 'Search'}</button></form></div><fieldset className="source-list"><legend>Sources</legend><div className="source-options">{SOURCE_IDS.map(id => <label key={id} className={`source-option ${searchSources.includes(id) ? 'is-on' : ''}`} title={searchSources.length === 1 && searchSources.includes(id) ? `${sourceDescriptions[id]} At least one source stays selected.` : sourceDescriptions[id]}><input type="checkbox" checked={searchSources.includes(id)} onChange={() => toggleSearchSource(id)} /><span>{sourceLabels[id]}{sourceKinds[id] && <small> · {sourceKinds[id]}</small>}</span></label>)}</div></fieldset><div className="search-warnings" role="status">{searchData.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div><p className="section-note" style={{ margin: '0 0 14px' }} aria-live="polite">{searching ? 'Searching catalogs… This can take a moment.' : searchData.searched ? `${searchData.results.length}${Number.isInteger(searchData.totalMatches) ? ` of ${searchData.totalMatches}` : ''} songs shown · ${searchData.results.filter(result => result.piano_only === true).length} piano-only${searchData.hasMore ? ' · More available below' : ''}` : ''}</p><div className="song-list results">{searchData.results.length ? searchData.results.map((result, index) => <SearchResult key={`${result.url}-${index}`} result={result} libraries={library.libraries} busy={busy} onSave={saveResult} notice={notice} />) : searchData.searched ? <EmptyState title="No songs found in this batch." description="Try the next results, or search another title or composer." /> : <EmptyState icon="search" title="Find a song" description="Try a song title, artist, or composer." />}</div>{searchData.hasMore && <button className="btn light load-more" disabled={searching} onClick={() => search(true)}>Load more songs</button>}</section>}
 
     </main>
-    {queueVisible && <aside className={`queue-panel ${queueIsDocked ? '' : 'is-open'} ${draggingSong ? 'is-drop-ready' : ''} ${queueDrop ? 'is-drop-target' : ''}`} id="queue-panel" aria-label="Queue" {...queueDropProps}>
+    {queueVisible && <aside className={`queue-panel ${queueIsDocked ? '' : 'is-open'} ${draggingSong ? 'is-drop-ready' : ''} ${queueDrop ? 'is-drop-target' : ''}`} id="queue-panel" aria-label="Queue">
       {!queueBeside && <button type="button" ref={queueClose} className="icon-button queue-panel-close" aria-label="Close queue" title="Close queue" onClick={() => setQueueVisible(false)}><Icon name="close" /></button>}
       {queueContent}
     </aside>}
