@@ -29,10 +29,32 @@ def stem(word):
     return word if len(word) <= 4 or word.isdigit() else word.rstrip('aeiouys') or word
 
 
+def close(a, b):
+    """Typo distance (insertions, deletions, substitutions, swapped neighbours) within 1, or 2 for long words."""
+    limit = 1 if len(a) <= 5 else 2
+    if a.isdigit() or b.isdigit() or len(a) < 5 or abs(len(a) - len(b)) > limit:
+        return False
+    previous2, previous = None, list(range(len(b) + 1))
+    for i in range(1, len(a) + 1):
+        current = [i] + [0] * len(b)
+        for j in range(1, len(b) + 1):
+            current[j] = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] != b[j - 1]))
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                current[j] = min(current[j], previous2[j - 2] + 1)
+        if min(current) > limit:
+            return False
+        previous2, previous = previous, current
+    return previous[-1] <= limit
+
+
+def word_match(token, word):
+    return stem(word).startswith(stem(token)) or close(token, word)
+
+
 def token_match(tokens, text):
-    """Every query word starts some word in the text, comparing stems so partial words also match."""
-    found = [stem(word) for word in words(text)]
-    return all(any(word.startswith(stem(token)) for word in found) for token in tokens)
+    """Every query word starts some word in the text (comparing stems), or is a small typo away from one."""
+    found = words(text)
+    return all(any(word_match(token, word) for word in found) for token in tokens)
 
 
 class Links(HTMLParser):
@@ -181,7 +203,7 @@ class Catalog:
             if len(pages) > 250:
                 raise ValueError('The classical catalog changed; please try again later.')
             content = [t for t in tokens if t not in STOPWORDS and (len(t) > 2 or t.isdigit())] or tokens
-            matched = {url: name for url, name in pages.items() if any(t in words(name) for t in content if not t.isdigit())}
+            matched = {url: name for url, name in pages.items() if any(t == w or close(t, w) for t in content if not t.isdigit() for w in words(name))}
             # Composer queries need only that composer's pages; title queries scan the catalog.
             targets = matched or pages
             def load(item):
