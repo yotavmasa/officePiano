@@ -287,6 +287,7 @@ function App() {
   const [dialog, setDialog] = useState(null);
   const [selected, setSelected] = useState([]);
   const [logoMissing, setLogoMissing] = useState(false);
+  const [betaOpen, setBetaOpen] = useState(() => storage.get('piano-beta-open') === 'on');
   const [queueSelected, setQueueSelected] = useState([]);
   const [songMenu, setSongMenu] = useState(null);
   const menuReturn = useRef(null);
@@ -1147,6 +1148,7 @@ function App() {
   // With falling notes open on a wide Player page, the queue moves to the side panel to make room.
   const queueBeside = view === 'player' && showNotes && wideQueue;
   const showQueuePanel = view !== 'player' || queueBeside;
+  const betaVisible = betaOpen || view === 'sheets';
   const queueIsDocked = showQueuePanel && wideQueue && (queueDocked || queueBeside);
   const queueVisible = queueIsDocked || showQueuePanel && queueOpen;
   // Docking the panel reflows the page, so clicks animate it; drags open it instantly.
@@ -1226,8 +1228,8 @@ function App() {
       <div className="collections"><div className="side-heading"><span className="eyebrow">Your libraries</span><button className="icon-button" aria-label="Create library" title="Create library" onClick={() => { setLibraryName(''); setDialog({ type: 'create' }); }}><Icon name="plus" /></button></div>
         <nav className="nav library-nav" aria-label="Libraries">{library.libraries.map(item => <button key={item.id} {...libraryDropProps(item.id)} className={`${view === item.id ? 'active' : ''} ${draggingSong ? 'is-drop-ready' : ''} ${libraryDrop === item.id ? 'is-drop-target' : ''}`} aria-current={view === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><Icon name="folder" /><span className="name">{item.name}</span><span className="count">{library.songs.filter(song => (song.library_ids || []).includes(item.id)).length}</span></button>)}</nav>
       </div>
-      <div className="collections wip-section"><div className="side-heading"><span className="eyebrow">Work in progress</span></div>
-        <nav className="nav library-nav" aria-label="Work in progress"><button className={view === 'sheets' ? 'active' : ''} aria-current={view === 'sheets' ? 'page' : undefined} onClick={() => navigate('sheets')}><Icon name="book" /><span className="name">Sheet music</span><span className="count">{library.songs.filter(song => song.source_kind === 'sheet').length}</span></button></nav>
+      <div className="collections wip-section"><div className="side-heading"><button type="button" className="side-toggle" aria-expanded={betaVisible} aria-controls="beta-features" onClick={() => setBetaOpen(open => { storage.set('piano-beta-open', open ? 'off' : 'on'); return !open; })}><span className="eyebrow">Beta features</span><Icon name="arrow" style={{ transform: betaVisible ? 'rotate(90deg)' : 'none' }} /></button></div>
+        {betaVisible && <nav className="nav library-nav" id="beta-features" aria-label="Beta features"><button className={view === 'sheets' ? 'active' : ''} aria-current={view === 'sheets' ? 'page' : undefined} onClick={() => navigate('sheets')}><Icon name="book" /><span className="name">Sheet music</span><span className="count">{library.songs.filter(song => song.source_kind === 'sheet').length}</span></button></nav>}
       </div>
       <div className="side-note"><Icon name="piano" /> A little music for the room.<br />PianoDisc · Prodigy II</div>
     </aside>

@@ -2064,3 +2064,7 @@ a { color: var(--indigo); }
 @media (prefers-reduced-motion: reduce) { .falling-notes { animation: none; } }
 .topbar { justify-content: flex-end; }
 @media (max-width: 740px) { .sidebar .wip-section { display: none; } }
+.side-toggle { display: flex; align-items: center; gap: 6px; padding: 4px 0; color: inherit; }
+.side-toggle svg { width: 14px; height: 14px; color: var(--slate); transition: transform 160ms ease; }
+.side-toggle:hover .eyebrow { color: var(--indigo); }
+@media (prefers-reduced-motion: reduce) { .side-toggle svg { transition: none; } }
