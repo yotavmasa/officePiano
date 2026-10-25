@@ -333,7 +333,7 @@ class RequestHandler:
                 library_id = self.headers.get('x-library-id', '')
                 with LOCK:
                     if library_id and not any(item['id'] == library_id for item in LIBRARY.snapshot()['libraries']):
-                        raise ValueError('This library no longer exists. Choose another library before uploading.')
+                        raise ValueError('This playlist no longer exists. Choose another playlist before uploading.')
                     song = LIBRARY.add(data, name)
                     if library_id:
                         LIBRARY.mutate({'action': 'assign', 'song_id': song['id'], 'library_id': library_id, 'value': True})

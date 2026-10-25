@@ -336,7 +336,7 @@ class Library:
                 try:
                     self.db.execute('INSERT INTO libraries VALUES(?,?,?)', (uuid.uuid4().hex, name, time.time()))
                 except sqlite3.IntegrityError:
-                    raise ValueError('A library with that name already exists.') from None
+                    raise ValueError('A playlist with that name already exists.') from None
             elif action == 'reorder':
                 identity = request.get('library_id', '')
                 ordered = request.get('song_ids')
@@ -344,7 +344,7 @@ class Library:
                     raise ValueError('Choose a valid song order.')
                 if identity:
                     if not self.db.execute('SELECT 1 FROM libraries WHERE id=?', (identity,)).fetchone():
-                        raise ValueError('Choose an existing library.')
+                        raise ValueError('Choose an existing playlist.')
                     existing = [row[0] for row in self.db.execute('SELECT m.song_id FROM memberships m JOIN songs s ON s.id=m.song_id WHERE m.library_id=? AND s.deleted=0', (identity,))]
                 else:
                     existing = [row[0] for row in self.db.execute('SELECT id FROM songs WHERE deleted=0')]
@@ -385,15 +385,15 @@ class Library:
                 identity = request.get('library_id')
                 name = self._name(request.get('name'))
                 if not isinstance(identity, str) or not self.db.execute('SELECT 1 FROM libraries WHERE id=?', (identity,)).fetchone():
-                    raise ValueError('Choose an existing library.')
+                    raise ValueError('Choose an existing playlist.')
                 try:
                     self.db.execute('UPDATE libraries SET name=? WHERE id=?', (name, identity))
                 except sqlite3.IntegrityError:
-                    raise ValueError('A library with that name already exists.') from None
+                    raise ValueError('A playlist with that name already exists.') from None
             elif action == 'delete_library':
                 identity = request.get('library_id')
                 if not isinstance(identity, str) or not self.db.execute('SELECT 1 FROM libraries WHERE id=?', (identity,)).fetchone():
-                    raise ValueError('Choose an existing library.')
+                    raise ValueError('Choose an existing playlist.')
                 # Songs stay saved; only the collection and its memberships go.
                 self.db.execute('DELETE FROM memberships WHERE library_id=?', (identity,))
                 self.db.execute('DELETE FROM libraries WHERE id=?', (identity,))
@@ -425,10 +425,10 @@ class Library:
                 else:
                     library_id = request.get('library_id')
                     if not isinstance(library_id, str) or not self.db.execute('SELECT 1 FROM libraries WHERE id=?', (library_id,)).fetchone():
-                        raise ValueError('Choose an existing library.')
+                        raise ValueError('Choose an existing playlist.')
                     value = request.get('assigned', request.get('value', True))
                     if not isinstance(value, bool):
-                        raise ValueError('Choose whether to add this song to the library.')
+                        raise ValueError('Choose whether to add this song to the playlist.')
                     if value:
                         self.db.execute('INSERT OR IGNORE INTO memberships(song_id,library_id,order_position) VALUES(?,?,?)', (song_id, library_id, self.db.execute('SELECT COALESCE(MAX(order_position),-1)+1 FROM memberships WHERE library_id=?', (library_id,)).fetchone()[0]))
                     else:

@@ -129,6 +129,17 @@ class QueueTests(unittest.TestCase):
         self.assertTrue(self.player.running)
         self.assertEqual(self.engine.song,'B')
 
+    def test_clear_after_keeps_current_song_playing(self):
+        self.player.control('play', {'index':1})
+        before=self.player.snapshot()
+        with self.assertRaises(ValueError): self.player.mutate({'action':'clear_after','index':1,'expected_song_ids':['A','B']})
+        self.assertEqual(self.player.snapshot(),before)
+        self.player.mutate({'action':'clear_after','index':1,'expected_song_ids':['A','B','C']})
+        self.assertEqual((self.player.song_ids,self.player.index,self.player.running,self.engine.song),(['A','B'],1,True,'B'))
+        self.player.mutate({'action':'clear_after','index':0})
+        self.assertEqual((self.player.song_ids,self.player.index,self.player.running),(['A'],0,False))
+        self.assertEqual(self.make_player().song_ids,['A'])
+
     def test_add_at_index_inserts_and_keeps_current_song(self):
         self.player.control('play', {'index':1})
         before=self.player.snapshot()
