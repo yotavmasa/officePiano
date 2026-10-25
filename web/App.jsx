@@ -1,6 +1,12 @@
 import React, { useCallback, useEffect, useRef, useState, useId } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
+import '@fontsource/dm-sans/300.css';
+import '@fontsource/dm-sans/400.css';
+import '@fontsource/dm-sans/500.css';
+import '@fontsource/dm-sans/600.css';
+import '@fontsource/dm-sans/700.css';
+import '@fontsource/dm-mono/400.css';
 import './styles.css';
 import { SortableList, SortableItem } from './SortableList.jsx';
 import { groupSheetSongs } from './sheetGroups.mjs';
@@ -1281,7 +1287,7 @@ function App() {
               ? <div className="volume-wrap"><label htmlFor="volume" aria-label="Volume on this device"><Icon name="volume" /></label><input id="volume" type="range" min="0" max="100" value={local.volume} aria-label="Volume on this device" onChange={event => local.setVolume(Number(event.target.value))} /><output htmlFor="volume">{local.volume}%</output></div>
               : <div className="volume-wrap"><label htmlFor="volume" aria-label="Piano volume"><Icon name="volume" /></label><input id="volume" type="range" min="0" max="100" value={volume} aria-label="Piano volume" onChange={event => { volumeDragging.current = true; setVolume(Number(event.target.value)); }} onPointerUp={event => saveVolume(Number(event.currentTarget.value))} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) saveVolume(Number(event.currentTarget.value)); }} onBlur={event => { if (volumeDragging.current) saveVolume(Number(event.currentTarget.value)); }} /><output htmlFor="volume">{volume}%</output></div>}</div>
           </div>
-          <p className={`playing-on ${onDevice ? 'is-local' : ''}`}><Icon name={currentEntry.icon} />Playing on {currentEntry.name}{onDevice && <> · simple piano sound, <span className="playing-on-warning">the piano stays silent</span></>}</p></div></section>
+          <p className={`playing-on ${onDevice ? 'is-local' : ''}`}><Icon name={currentEntry.icon} />Playing on {currentEntry.name}{onDevice && ' · simple piano sound, the piano stays silent'}</p></div></section>
         <section className={`notes-panel ${showNotes ? 'is-open' : ''}`} aria-labelledby="notes-heading">
           <div className="notes-panel-header"><div><h2 id="notes-heading">Falling notes</h2><p className="section-note">Notes from the original file, without drums. Press the keys to play along.</p></div><button type="button" className="btn small" aria-expanded={showNotes} aria-controls="falling-notes" onClick={toggleNotes}>{showNotes ? 'Hide' : 'Show'}</button></div>
           {showNotes && <div id="falling-notes"><FallingNotes songId={playerSongId} loadSong={loadSongNotes} getTime={notesTime} playing={notesPlaying} position={playerElapsed} onPress={pressKey} onRelease={releaseKey} /></div>}

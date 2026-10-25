@@ -1,10 +1,4 @@
-/* Cymphony design system: Roobert type and the brand colour tokens. */
-@font-face { font-family: 'Roobert'; src: url('/assets/fonts/Roobert-Light.woff2') format('woff2'); font-weight: 300; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Roobert'; src: url('/assets/fonts/Roobert-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Roobert'; src: url('/assets/fonts/Roobert-Medium.woff2') format('woff2'); font-weight: 500; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Roobert'; src: url('/assets/fonts/Roobert-SemiBold.woff2') format('woff2'); font-weight: 600; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Roobert'; src: url('/assets/fonts/Roobert-Bold.woff2') format('woff2'); font-weight: 700; font-style: normal; font-display: swap; }
-@font-face { font-family: 'Roobert Mono'; src: url('/assets/fonts/RoobertMono-Regular.woff2') format('woff2'); font-weight: 400; font-style: normal; font-display: swap; }
+/* Cymphony design system: brand colour tokens. DM Sans and DM Mono are the system's open fallbacks for Roobert. */
 :root {
   --periwinkle:#7575e7; --periwinkle-40:#c8c8f5; --periwinkle-20:#e3e3fa;
   --indigo:#5151ca; --indigo-40:#b9b9ea; --indigo-20:#dcdcf4;
@@ -2088,5 +2082,4 @@ a { color: var(--indigo); }
 @media (min-width: 741px) { .topbar { display: none; } }
 @media (max-width: 740px) { .sidebar .side-status, .sidebar .side-wifi { display: none; } }
 .side-status .connection { padding-left: 14px; padding-right: 14px; }
-.player .playing-on, .player .playing-on.is-local { color: var(--white); font-weight: 400; }
-.playing-on-warning { color: var(--mint); }
+.player .playing-on, .player .playing-on.is-local { color: var(--mint); font-weight: 400; }
