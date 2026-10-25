@@ -2063,3 +2063,4 @@ a { color: var(--indigo); }
 @keyframes notes-open { from { opacity: 0; transform: translateY(-6px); } }
 @media (prefers-reduced-motion: reduce) { .falling-notes { animation: none; } }
 .topbar { justify-content: flex-end; }
+@media (max-width: 740px) { .sidebar .wip-section { display: none; } }
