@@ -88,7 +88,7 @@ const sourceDescriptions = {
   zzaj: 'zzaj: about 100 jazz standards and originals as backing tracks with piano, bass, and a lead line, from the zzaj lead-sheet collection (zzaj.web.fc2.com).',
 };
 const sourceLabels = { bitmidi: 'BitMidi', freemidi: 'FreeMidi', bushgrafts: 'Bushgrafts', kunstderfuge: 'Kunst der Fuge', maestro: 'MAESTRO', zzaj: 'zzaj' };
-const sourceKinds = { bushgrafts: 'Jazz', kunstderfuge: 'Classical', maestro: 'Performances', zzaj: 'Jazz standards' };
+const sourceKinds = { bushgrafts: 'Jazz', kunstderfuge: 'Classical', maestro: 'Classical performances', zzaj: 'Jazz standards' };
 const SOURCE_IDS = ['bitmidi', 'freemidi', 'bushgrafts', 'kunstderfuge', 'maestro', 'zzaj'];
 // Selections saved when these were every source; new sources join them.
 const LEGACY_ALL_SOURCES = ['bitmidi,freemidi,bushgrafts,kunstderfuge', 'bitmidi,freemidi,bushgrafts,kunstderfuge,maestro'];
