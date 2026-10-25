@@ -142,6 +142,7 @@ def parse_midi(data, piano_only=True):
     programs = [0] * 16
     explicit = [False] * 16
     notes = []
+    channels = set()
     unlabelled = False
     tempo, last_tick, duration = 500000, 0, 0.0
     # Across tracks, a program set at the same tick applies before a sounded note.
@@ -163,10 +164,11 @@ def parse_midi(data, piano_only=True):
                 incompatible('This song has notes outside the 88-key piano range.')
             unlabelled |= not explicit[channel]
             notes.append(note)
+            channels.add(channel)
     duration += (end_tick - last_tick) * tempo / division / 1000000
     if not notes:
         raise ValueError('This MIDI file contains no playable piano notes.')
-    return {**tags, 'notes': len(notes), 'duration': round(duration, 2), 'key_min': min(notes),
+    return {**tags, 'notes': len(notes), 'channels': len(channels), 'duration': round(duration, 2), 'key_min': min(notes),
             'key_max': max(notes), 'piano_only': not reasons, 'compatibility_reason': ' '.join(reasons),
             'verification': ('Contains other instruments or device commands' if reasons else
                              'GM piano assumed for unlabelled channels' if unlabelled else 'GM piano programs verified')}
@@ -211,6 +213,16 @@ class Library:
             self.db.execute('ALTER TABLE songs ADD COLUMN order_position INTEGER NOT NULL DEFAULT 0')
         if 'order_position' not in [column[1] for column in self.db.execute('PRAGMA table_info(memberships)')]:
             self.db.execute('ALTER TABLE memberships ADD COLUMN order_position INTEGER NOT NULL DEFAULT 0')
+        # Songs saved before channel counts existed get them from their stored MIDI once.
+        for row in self.db.execute('SELECT id,midi,metadata FROM songs').fetchall():
+            metadata = json.loads(row['metadata'])
+            if 'channels' in metadata:
+                continue
+            try:
+                metadata['channels'] = parse_midi(row['midi'], piano_only=False)['channels']
+            except ValueError:
+                continue
+            self.db.execute('UPDATE songs SET metadata=? WHERE id=?', (json.dumps(metadata), row['id']))
         self.db.commit()
         for row in self.db.execute('SELECT id,name,midi FROM songs WHERE deleted=0'):
             self._export(row)
@@ -378,6 +390,13 @@ class Library:
                     self.db.execute('UPDATE libraries SET name=? WHERE id=?', (name, identity))
                 except sqlite3.IntegrityError:
                     raise ValueError('A library with that name already exists.') from None
+            elif action == 'delete_library':
+                identity = request.get('library_id')
+                if not isinstance(identity, str) or not self.db.execute('SELECT 1 FROM libraries WHERE id=?', (identity,)).fetchone():
+                    raise ValueError('Choose an existing library.')
+                # Songs stay saved; only the collection and its memberships go.
+                self.db.execute('DELETE FROM memberships WHERE library_id=?', (identity,))
+                self.db.execute('DELETE FROM libraries WHERE id=?', (identity,))
             elif action in ('delete', 'restore'):
                 song_id = request.get('song_id')
                 if not isinstance(song_id, str):
