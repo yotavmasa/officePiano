@@ -1990,10 +1990,12 @@ h2,
 /* The player card morphs as a solid shape; its snapshots are cropped, never stretched. */
 ::view-transition-group(now-playing) { background: var(--indigo); border-radius: var(--radius-card); overflow: clip; z-index: 10; }
 ::view-transition-group(now-playing-art) { z-index: 11; }
-/* The saved-song filter grows into the Discover search: a white field whose contents are cropped, not stretched. */
+/* The saved-song filter grows into the Discover search and shrinks back. */
 ::view-transition-group(page-search) { background: white; border-radius: 10px; box-shadow: inset 0 0 0 1px var(--line); overflow: clip; }
 ::view-transition-old(page-search), ::view-transition-new(page-search) { width: 100%; height: 100%; object-fit: none; object-position: left center; }
-::view-transition-old(page-search) { animation: vt-fade-out 120ms linear both; }
+/* Only the empty field resizes; the old contents vanish at once and the new ones fade in at the end, so the two never overlap. */
+::view-transition-old(page-search) { animation: none; opacity: 0; }
+::view-transition-new(page-search) { animation: vt-fade-in 120ms 200ms linear both; }
 ::view-transition-old(now-playing), ::view-transition-new(now-playing) { width: 100%; height: 100%; object-fit: none; object-position: left top; }
 /* The queue changes shape too much to morph, so it fades out of the page while the side panel slides in.
    :only-child limits these to entering or leaving; identical panels on both sides just crossfade. */
