@@ -1460,7 +1460,7 @@ h2,
 
 .topbar-status { display:flex; align-items:center; gap:12px; min-width:0; }
 .online-count { display:inline-flex; align-items:center; gap:6px; white-space:nowrap; color:var(--muted); font-size:12px; }
-.online-dot { width:6px; height:6px; border-radius:50%; background:var(--indigo); }
+.online-dot { width:6px; height:6px; border-radius:50%; background:var(--mint); }
 .online-count.offline .online-dot { background:var(--orchid); }
 @media (max-width:560px) {
   .topbar-status { width:100%; justify-content:space-between; gap:10px; }
@@ -2045,3 +2045,11 @@ dialog { border-radius: var(--radius-card); background: var(--white); color: var
 a { color: var(--indigo); }
 .brand-logo { display: block; width: 132px; height: auto; }
 .brand-name { display: block; margin-top: 6px; font-size: 15px; font-weight: 500; color: var(--indigo); }
+.connection.connected .dot { background: var(--mint); }
+/* The falling-notes panel grows open and shrinks closed; the canvas fades in where View Transitions are missing. */
+.notes-panel { view-transition-name: notes-panel; }
+::view-transition-group(notes-panel) { overflow: clip; border-radius: var(--radius-card); }
+::view-transition-old(notes-panel), ::view-transition-new(notes-panel) { height: auto; object-fit: none; object-position: top; }
+.falling-notes { animation: notes-open 260ms ease-out; }
+@keyframes notes-open { from { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) { .falling-notes { animation: none; } }

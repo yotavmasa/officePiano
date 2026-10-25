@@ -38,6 +38,16 @@ function initialKey() {
 }
 
 const WIDE_QUEUE = '(min-width: 1280px)';
+// Animates a layout change with the View Transitions API where available. The change runs exactly
+// once even when the browser skips the transition, for example when another one starts first.
+function withViewTransition(apply) {
+  if (!document.startViewTransition || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return apply();
+  let applied = false;
+  const run = () => { if (!applied) { applied = true; flushSync(apply); } };
+  const transition = document.startViewTransition(run);
+  transition.ready.catch(run);
+  transition.finished.catch(() => {});
+}
 const SONG_DRAG_TYPE = 'application/x-office-piano-song';
 const SEEK_KEYS = ['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown', 'Home', 'End', 'PageUp', 'PageDown'];
 const time = seconds => {
@@ -453,8 +463,7 @@ function App() {
   viewRef.current = view;
   const navigate = useCallback(next => {
     const apply = () => { setView(next); setFilter(''); };
-    const animate = next !== viewRef.current && document.startViewTransition && !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    if (animate) document.startViewTransition(() => flushSync(apply)); else apply();
+    if (next !== viewRef.current) withViewTransition(apply); else apply();
     const url = new URL(location.href);
     url.searchParams.set('view', next);
     history.replaceState(null, '', url.pathname + url.search);
@@ -575,8 +584,10 @@ function App() {
     return status?.song_id === playerSongId ? songClock({ ...pianoClock.current, duration: playerDuration || Infinity }, performance.now()) : 0;
   };
   function toggleNotes() {
-    storage.set('piano-falling-notes', showNotes ? 'off' : 'on');
-    setShowNotes(!showNotes);
+    withViewTransition(() => setShowNotes(value => {
+      storage.set('piano-falling-notes', value ? 'off' : 'on');
+      return !value;
+    }));
   }
   async function seekTo(value) {
     const selected = seekPreview;
@@ -1133,8 +1144,10 @@ function App() {
           })}
         </>}
   </>;
-  const showQueuePanel = view !== 'player';
-  const queueIsDocked = showQueuePanel && wideQueue && queueDocked;
+  // With falling notes open on a wide Player page, the queue moves to the side panel to make room.
+  const queueBeside = view === 'player' && showNotes && wideQueue;
+  const showQueuePanel = view !== 'player' || queueBeside;
+  const queueIsDocked = showQueuePanel && wideQueue && (queueDocked || queueBeside);
   const queueVisible = queueIsDocked || showQueuePanel && queueOpen;
   function setQueueVisible(visible) {
     if (!wideQueue) return setQueueOpen(visible);
@@ -1231,7 +1244,7 @@ function App() {
           <div className="notes-panel-header"><div><h2 id="notes-heading">Falling notes</h2><p className="section-note">Notes from the original file, without drums. Press the keys to play along.</p></div><button type="button" className="btn small" aria-expanded={showNotes} aria-controls="falling-notes" onClick={toggleNotes}>{showNotes ? 'Hide' : 'Show'}</button></div>
           {showNotes && <div id="falling-notes"><FallingNotes songId={playerSongId} loadSong={loadSongNotes} getTime={notesTime} playing={notesPlaying} position={playerElapsed} onPress={pressKey} onRelease={releaseKey} /></div>}
         </section>
-        <div className="queue-block">{queueContent}</div>
+        {!queueBeside && <div className="queue-block">{queueContent}</div>}
       </section>}
 
       {view === 'sheets' && <section className="sheet-import" aria-label="Sheet music files">
@@ -1270,7 +1283,7 @@ function App() {
       <footer className="footer"><span>Songs saved on the piano computer. Download a copy anytime.</span><button onClick={() => { setCopied(false); setDialog({ type: 'remote' }); }}><Icon name="wifi" />Control over Wi-Fi</button></footer>
     </main>
     {queueVisible && <aside className={`queue-panel ${queueIsDocked ? '' : 'is-open'} ${draggingSong ? 'is-drop-ready' : ''} ${queueDrop ? 'is-drop-target' : ''}`} id="queue-panel" aria-label="Queue" {...queueDropProps}>
-      <button type="button" ref={queueClose} className="icon-button queue-panel-close" aria-label="Close queue" title="Close queue" onClick={() => setQueueVisible(false)}><Icon name="close" /></button>
+      {!queueBeside && <button type="button" ref={queueClose} className="icon-button queue-panel-close" aria-label="Close queue" title="Close queue" onClick={() => setQueueVisible(false)}><Icon name="close" /></button>}
       {queueContent}
     </aside>}
     {queueVisible && !queueIsDocked && <div className="queue-backdrop" aria-hidden="true" onClick={() => setQueueOpen(false)} />}
