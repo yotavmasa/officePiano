@@ -2112,3 +2112,8 @@ a { color: var(--indigo); }
 .edit-details-search { margin: 6px 0 4px; padding-top: 14px; border-top: 1px solid var(--periwinkle-40); }
 .itunes-result.is-chosen { background: var(--indigo-20); box-shadow: inset 0 0 0 1.33px var(--indigo); }
 @media (max-width: 520px) { .edit-details-cover { flex-basis: 56px; width: 56px; height: 56px; } }
+.top-notice.visible { display: flex; align-items: flex-start; gap: 12px; }
+.top-notice-text { flex: 1; min-width: 0; }
+.top-notice-close { flex: 0 0 auto; width: 24px; height: 24px; margin: -2px -6px -2px 0; display: grid; place-items: center; border-radius: var(--radius-sm); color: inherit; opacity: .7; }
+.top-notice-close:hover { opacity: 1; background: #13163b14; }
+.top-notice-close svg { width: 14px; height: 14px; }
