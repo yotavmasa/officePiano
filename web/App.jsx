@@ -1221,7 +1221,7 @@ function App() {
     <aside className="sidebar">
       <div className="brand">{logoMissing ? <><span className="brand-mark"><Icon name="piano" /></span>Office Piano</> : <div><img className="brand-logo" src="/assets/brand/cymphony-logo-full-purple.svg" alt="Cymphony" onError={() => setLogoMissing(true)} /><span className="brand-name">Office Piano</span></div>}</div>
       <nav className="nav" aria-label="Music">
-        {[['player', 'Player', 'play', queueIds.length], ['all', 'All songs', 'grid', library.songs.filter(song => song.source_kind !== 'sheet').length], ['sheets', 'Sheet music', 'book', library.songs.filter(song => song.source_kind === 'sheet').length], ['favorites', 'Favorites', 'heart', library.songs.filter(song => song.favorite).length], ['discover', 'Discover', 'search']].map(([id, label, icon, count]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{label}{id === 'sheets' && <span className="nav-wip">WIP</span>}{count !== undefined && <span className="count">{count}</span>}</button>)}
+        {[['player', 'Player', 'play', queueIds.length], ['all', 'All songs', 'grid', library.songs.filter(song => song.source_kind !== 'sheet').length], ['favorites', 'Favorites', 'heart', library.songs.filter(song => song.favorite).length], ['discover', 'Discover', 'search'], ['sheets', 'Sheet music', 'book', library.songs.filter(song => song.source_kind === 'sheet').length]].map(([id, label, icon, count]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{label}{id === 'sheets' && <span className="nav-wip">WIP</span>}{count !== undefined && <span className="count">{count}</span>}</button>)}
       </nav>
       <div className="collections"><div className="side-heading"><span className="eyebrow">Your libraries</span><button className="icon-button" aria-label="Create library" title="Create library" onClick={() => { setLibraryName(''); setDialog({ type: 'create' }); }}><Icon name="plus" /></button></div>
         <nav className="nav library-nav" aria-label="Libraries">{library.libraries.map(item => <button key={item.id} {...libraryDropProps(item.id)} className={`${view === item.id ? 'active' : ''} ${draggingSong ? 'is-drop-ready' : ''} ${libraryDrop === item.id ? 'is-drop-target' : ''}`} aria-current={view === item.id ? 'page' : undefined} onClick={() => navigate(item.id)}><Icon name="folder" /><span className="name">{item.name}</span><span className="count">{library.songs.filter(song => (song.library_ids || []).includes(item.id)).length}</span></button>)}</nav>
@@ -1303,7 +1303,7 @@ function App() {
       </div>
     </section>}
     <nav className="mobile-dock" aria-label="Main navigation">
-      {[['player', 'Player', 'play'], ['all', 'All songs', 'grid'], ['sheets', 'Sheet music', 'book'], ['favorites', 'Favorites', 'heart'], ['discover', 'Discover', 'search']].map(([id, label, icon]) =>
+      {[['player', 'Player', 'play'], ['all', 'All songs', 'grid'], ['favorites', 'Favorites', 'heart'], ['discover', 'Discover', 'search'], ['sheets', 'Sheet music', 'book']].map(([id, label, icon]) =>
         <button key={id} className={view === id ? 'active' : ''} aria-label={label} title={label} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{id === 'sheets' && <span className="nav-wip">WIP</span>}</button>
       )}
     </nav>
