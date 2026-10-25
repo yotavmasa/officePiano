@@ -1916,7 +1916,7 @@ h2,
 
 /* Saved song rows: click to play, right-click or ⋯ for actions, checkbox to select */
 .song-list:not(.results) > .song-row.saved-song,
-.song-list > .list-labels.saved-labels { grid-template-columns: 22px 35px minmax(0, 1fr) 90px 72px 55px 34px; gap: 12px; padding: 9px 16px; }
+.song-list > .list-labels.saved-labels { grid-template-columns: 22px 35px minmax(0, 1fr) 72px 55px 34px; gap: 12px; padding: 9px 16px; }
 .song-list:not(.results) > .song-row.saved-song { min-height: 58px; }
 .song-list > .list-labels.saved-labels > * { display: block; }
 .song-list > .list-labels.saved-labels > .song-check { display: grid; }
