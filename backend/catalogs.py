@@ -19,10 +19,49 @@ def words(value):
     return re.findall(r'[a-z0-9]+', unicodedata.normalize('NFKD', value).encode('ascii', 'ignore').decode().lower())
 
 
+# Small words that appear in many titles and composer names; they never decide a match on their own.
+STOPWORDS = {'a', 'an', 'and', 'the', 'of', 'in', 'on', 'for', 'de', 'la', 'le', 'les', 'du', 'des', 'di', 'da', 'del',
+             'der', 'die', 'das', 'und', 'et', 'en', 'no', 'nr', 'op'}
+
+
+def stem(word):
+    # Treat sonata/sonate, nocturne/nocturnes and fugue/fugues alike.
+    return word if len(word) <= 4 or word.isdigit() else word.rstrip('aeiouys') or word
+
+
+def close(a, b):
+    """Typo distance (insertions, deletions, substitutions, swapped neighbours) within 1, or 2 for long words."""
+    limit = 1 if len(a) <= 5 else 2
+    if a.isdigit() or b.isdigit() or len(a) < 5 or abs(len(a) - len(b)) > limit:
+        return False
+    previous2, previous = None, list(range(len(b) + 1))
+    for i in range(1, len(a) + 1):
+        current = [i] + [0] * len(b)
+        for j in range(1, len(b) + 1):
+            current[j] = min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + (a[i - 1] != b[j - 1]))
+            if i > 1 and j > 1 and a[i - 1] == b[j - 2] and a[i - 2] == b[j - 1]:
+                current[j] = min(current[j], previous2[j - 2] + 1)
+        if min(current) > limit:
+            return False
+        previous2, previous = previous, current
+    return previous[-1] <= limit
+
+
+def word_match(token, word):
+    return stem(word).startswith(stem(token)) or close(token, word)
+
+
+def token_match(tokens, text):
+    """Every query word starts some word in the text (comparing stems), or is a small typo away from one."""
+    found = words(text)
+    return all(any(word_match(token, word) for word in found) for token in tokens)
+
+
 class Links(HTMLParser):
     def __init__(self, html):
         super().__init__(convert_charrefs=True)
         self.links, self.current, self.inside = [], None, False
+        self.lead, self.heading, self.linked = [], '', False
         self.feed(html)
         self.finish()
 
@@ -36,10 +75,15 @@ class Links(HTMLParser):
     def handle_starttag(self, tag, attrs):
         if tag == 'a':
             self.finish()
-            self.current = {'href': dict(attrs).get('href', ''), 'text': [], 'after': []}
+            if not self.linked:
+                self.heading, self.linked = ' '.join(' '.join(self.lead).split()), True
+            self.current = {'href': dict(attrs).get('href', ''), 'text': [], 'after': [], 'heading': self.heading}
             self.inside = True
         elif tag == 'br':
             self.finish()
+        elif tag == 'p':
+            self.finish()
+            self.lead, self.heading, self.linked = [], '', False
 
     def handle_endtag(self, tag):
         if tag == 'a':
@@ -50,6 +94,8 @@ class Links(HTMLParser):
     def handle_data(self, text):
         if self.current:
             self.current['text' if self.inside else 'after'].append(text)
+        elif not self.linked:
+            self.lead.append(text)
 
 
 class Catalog:
@@ -119,11 +165,17 @@ class Catalog:
                 if p.path != '/-/midi.asp' or not file.lower().endswith(('.mid', '.midi')):
                     continue
                 title = link['after'].strip(' |') or file.rsplit('/', 1)[-1].replace('_', ' ')
+                heading = link.get('heading', '').strip(' |')
+                if heading and heading not in title:
+                    title = heading + ' — ' + title
+                credit = re.search(r'\((?:n?c)\)([^/()]+?)\.midi?$', file, re.I)
+                version = ' '.join(part for part in (('Piano roll' if file.lower().startswith('rolls/') else ''),
+                                                     (credit.group(1).replace('_', ' ').title() if credit and credit.group(1).lower() != 'unknown' else '')) if part)
             else:
                 if not p.path.lower().endswith(('.mid', '.midi')):
                     continue
-                title = link['text']
-            found[url] = {'name': (composer + ' — ' if composer else '') + title[:200], 'url': url, 'piano_only': None}
+                title, version = link['text'], ''
+            found[url] = {'name': (composer + ' — ' if composer else '') + title[:200], 'url': url, 'piano_only': None, 'version': version, 'title': title}
         with self.lock:
             for url, song in found.items():
                 self.names[url] = song['name']
@@ -150,7 +202,8 @@ class Catalog:
                     pages[url] = composers[directory] + ' — ' + name
             if len(pages) > 250:
                 raise ValueError('The classical catalog changed; please try again later.')
-            matched = {url: name for url, name in pages.items() if any(t in words(name) for t in tokens)}
+            content = [t for t in tokens if t not in STOPWORDS and (len(t) > 2 or t.isdigit())] or tokens
+            matched = {url: name for url, name in pages.items() if any(t == w or close(t, w) for t in content if not t.isdigit() for w in words(name))}
             # Composer queries need only that composer's pages; title queries scan the catalog.
             targets = matched or pages
             def load(item):
@@ -167,8 +220,22 @@ class Catalog:
             warnings.append('Classical files are checked when saved. The site’s download limits may apply.')
         else:
             candidates = self.songs(self.page(self.base + self.index), self.base + self.index)
-        unique = {s['url']: s for s in candidates if all(t in words(s['name']) for t in tokens)}
-        matches = list(unique.values())
+        required = [t for t in tokens if t not in STOPWORDS] or tokens
+        unique = {s['url']: s for s in candidates if token_match(required, s['name'])}
+        # Title matches first, then piano works before organ, transcriptions and ensemble arrangements.
+        def rank(song):
+            in_title = token_match(required, song.get('title', song['name']))
+            secondary = any(word in words(song['name']) for word in ('organ', 'transcriptions', 'orchestral', 'chamber', 'arrangements'))
+            return (not in_title, secondary)
+        matches_found = sorted(unique.values(), key=rank)
+        # Several recordings of one piece get their version noted so they can be told apart.
+        counts = {}
+        for song in matches_found:
+            counts[song['name']] = counts.get(song['name'], 0) + 1
+        for song in matches_found:
+            if counts[song['name']] > 1 and song.get('version'):
+                song['name'] = f"{song['name']} ({song['version']})"[:240]
+        matches = matches_found
         batch = matches[(page - 1) * 12:page * 12]
         if not self.classical:
             def inspect(song):

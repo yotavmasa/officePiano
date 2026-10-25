@@ -15,9 +15,10 @@ def search(query, page=1, source='bitmidi'):
         raise ValueError('Enter a song, artist, or composer to search.')
     if type(page) is not int or not 1 <= page <= 1000:
         raise ValueError('Choose a valid results page.')
-    if source not in (*PROVIDERS, 'both', 'all'):
-        raise ValueError('Choose a MIDI source or all sites.')
-    names = list(PROVIDERS) if source == 'all' else ['bitmidi', 'freemidi'] if source == 'both' else [source]
+    # One source, 'both', 'all', or a comma-separated selection such as 'bitmidi,kunstderfuge'.
+    names = list(PROVIDERS) if source == 'all' else ['bitmidi', 'freemidi'] if source == 'both' else list(dict.fromkeys(source.split(','))) if isinstance(source, str) else []
+    if not names or len(names) > len(PROVIDERS) or any(name not in PROVIDERS for name in names):
+        raise ValueError('Choose at least one MIDI source.')
     def fetch(name):
         try:
             result = PROVIDERS[name].search(query, page)
