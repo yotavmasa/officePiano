@@ -4,6 +4,7 @@
   --indigo:#5151ca; --indigo-40:#b9b9ea; --indigo-20:#dcdcf4;
   --orchid:#ff8dff; --blush:#ffe8ff; --mint:#55ffa2;
   --ink:#13163b; --slate:#4a4e69; --mist:#fbfafe; --white:#ffffff;
+  --danger:#c62828; --danger-10:#fdecec;
   --font-sans:Roobert, "DM Sans", Arial, sans-serif;
   --font-mono:"Roobert Mono", "DM Mono", ui-monospace, monospace;
   --radius-sm:6px; --radius-card:16px; --radius-pill:999px;
@@ -1928,13 +1929,13 @@ h2,
 .context-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 6px; text-align: left; font-size: 13px; color: var(--forest); }
 .context-menu button svg { width: 16px; height: 16px; color: var(--slate); }
 .context-menu button:hover:not(:disabled), .context-menu button:focus-visible { background: var(--periwinkle-20); outline: none; }
-.context-menu button.is-danger, .context-menu button.is-danger svg { color: var(--ink); }
+.context-menu button.is-danger, .context-menu button.is-danger svg { color: var(--danger); }
+.context-menu button.is-danger:hover:not(:disabled), .context-menu button.is-danger:focus-visible { background: var(--danger-10); }
 .context-menu-separator { height: 1px; margin: 5px 4px; background: var(--line); }
 .bulk-bar { position: fixed; left: 262px; right: 24px; bottom: 112px; z-index: 36; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px 16px; margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--forest); color: var(--white); box-shadow:none; }
 .bulk-bar strong { font-size: 13px; }
 .bulk-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .bulk-actions .btn svg { width: 14px; height: 14px; }
-.bulk-actions .bulk-delete { color: var(--ink); }
 .bulk-library-list { display: grid; gap: 6px; margin: 4px 0 8px; }
 .bulk-library { display: flex; align-items: center; gap: 10px; padding: 11px 12px; border: 1px solid var(--line); border-radius: 9px; background: var(--white); text-align: left; }
 .bulk-library:hover:not(:disabled) { background: var(--periwinkle-20); }
@@ -2023,7 +2024,6 @@ h2 { font-weight: 500; }
 .btn.small { font-size: 13px; padding: 6px 14px; }
 .bulk-bar .btn.light, .queue-bulk .btn.light { background: var(--white); color: var(--indigo); border-color: var(--white); }
 .bulk-bar .btn.light:hover:not(:disabled), .queue-bulk .btn.light:hover:not(:disabled) { background: var(--blush); border-color: var(--blush); }
-.bulk-actions .bulk-delete { color: var(--ink); }
 .field, input[type="search"], select { border-radius: var(--radius-sm); border-color: var(--indigo-40); color: var(--ink); }
 dialog { border-radius: var(--radius-card); background: var(--white); color: var(--ink); border-color: var(--periwinkle-40); }
 .nav button { border-radius: var(--radius-pill); }
@@ -2128,6 +2128,8 @@ html { scrollbar-gutter: stable; }
 .player-fit > .notes-panel { flex: 1; min-height: 0; display: flex; flex-direction: column; margin-bottom: 0; }
 .player-fit #falling-notes { flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .player-fit .falling-notes { flex: 1; height: auto; min-height: 160px; }
+.bulk-bar .btn.light.bulk-delete { color: var(--danger); }
+.bulk-bar .btn.light.bulk-delete:hover:not(:disabled) { background: var(--danger-10); border-color: var(--danger-10); }
 .bulk-library.new-library { width: 100%; border-style: dashed; color: var(--indigo); }
 .check-row + .new-library, .dialog-hint + .new-library { margin-top: 10px; }
 .new-library-form { display: flex; gap: 8px; margin-top: 4px; }
