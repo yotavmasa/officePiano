@@ -1993,9 +1993,10 @@ h2,
 ::view-transition-group(now-playing-art) { z-index: 11; }
 /* The saved-song filter grows into the Discover search and shrinks back. Only the wider field is shown, cropped
    to the moving box, so the matching icon and placeholder stay put and the Search button slides in or out.
-   The outline draws over the snapshot to keep the cropped right edge. */
-::view-transition-group(page-search) { border-radius: 10px; overflow: clip; outline: 1px solid var(--line); outline-offset: -1px; }
-::view-transition-old(page-search), ::view-transition-new(page-search) { width: 100%; height: 100%; object-fit: none; object-position: left center; animation: none; }
+   The outline draws over the snapshot to keep the cropped right edge. Other page changes fade the field like the rest of the page. */
+:root[data-search-morph]:not([data-search-morph=""])::view-transition-group(page-search) { border-radius: 10px; overflow: clip; outline: 1px solid var(--line); outline-offset: -1px; }
+:root[data-search-morph]:not([data-search-morph=""])::view-transition-old(page-search),
+:root[data-search-morph]:not([data-search-morph=""])::view-transition-new(page-search) { width: 100%; height: 100%; object-fit: none; object-position: left center; animation: none; }
 :root[data-search-morph="grow"]::view-transition-old(page-search), :root[data-search-morph="shrink"]::view-transition-new(page-search) { opacity: 0; }
 ::view-transition-old(now-playing), ::view-transition-new(now-playing) { width: 100%; height: 100%; object-fit: none; object-position: left top; }
 /* The queue changes shape too much to morph, so it fades out of the page while the side panel slides in.
