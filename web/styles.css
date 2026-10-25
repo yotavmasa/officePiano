@@ -1922,7 +1922,7 @@ h2,
 
 /* Saved song rows: click to play, right-click or ⋯ for actions, checkbox to select */
 .song-list:not(.results) > .song-row.saved-song,
-.song-list > .list-labels.saved-labels { grid-template-columns: 22px 35px minmax(0, 1fr) 90px 55px 34px; gap: 12px; padding: 9px 16px; }
+.song-list > .list-labels.saved-labels { grid-template-columns: 22px 35px minmax(0, 1fr) 90px 72px 55px 34px; gap: 12px; padding: 9px 16px; }
 .song-list:not(.results) > .song-row.saved-song { min-height: 58px; }
 .song-list > .list-labels.saved-labels > * { display: block; }
 .song-list > .list-labels.saved-labels > .song-check { display: grid; }
@@ -1955,13 +1955,15 @@ h2,
 .bulk-library:hover:not(:disabled) { background: var(--periwinkle-20); }
 @media (max-width: 1050px) {
   .song-list:not(.results) > .song-row.saved-song,
-  .song-list > .list-labels.saved-labels { grid-template-columns: 22px 35px minmax(0, 1fr) 50px 34px; }
+  .song-list > .list-labels.saved-labels { grid-template-columns: 22px 35px minmax(0, 1fr) 72px 50px 34px; }
   .song-list:not(.results) > .song-row.saved-song > .piano-badge,
   .song-list > .list-labels.saved-labels > .type-label { display: none; }
 }
 @media (max-width: 740px) {
   .song-list:not(.results) > .song-row.saved-song,
   .song-list > .list-labels.saved-labels { grid-template-columns: 22px 32px minmax(0, 1fr) 40px 34px; gap: 9px; padding: 10px 12px; }
+  .song-list:not(.results) > .song-row.saved-song > .channels,
+  .song-list > .list-labels.saved-labels > .channels-label { display: none; }
   .song-list:not(.results) > .song-row.saved-song > .mini-art { width: 32px; height: 36px; }
   .song-list > .list-labels.saved-labels { display: grid; }
   .song-list:not(.results) > .song-row.saved-song > .duration { display: block; font-size: 11px; }
@@ -2070,3 +2072,8 @@ a { color: var(--indigo); }
 @media (prefers-reduced-motion: reduce) { .side-toggle svg { transition: none; } }
 .player .player-record { color: var(--white); }
 .mini-player-art { color: var(--white); }
+.song-row.saved-song > .channels { font-size: 13px; color: var(--slate); font-variant-numeric: tabular-nums; }
+/* On desktop the sidebar fills the window and stays put while the page scrolls. */
+@media (min-width: 741px) {
+  .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; overscroll-behavior: contain; }
+}
