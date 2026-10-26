@@ -72,6 +72,33 @@ class AdaptationTests(unittest.TestCase):
         self.assertTrue(all(1 <= note[3] <= 127 for note in after))
         self.assertEqual(shaped, adaptation.render(data, {'mode': 'no_drums', 'expressive': True})[0])
 
+    def test_soft_pedal_is_held_at_every_attack_and_released_after_the_last_note(self):
+        notes = [(60, 0, 480, 70), (64, 0, 480, 70), (67, 480, 1440, 70)]
+        part = (0, 0, 'Piano', notes, False)
+        data = fixture([part])
+        plain, plain_report = adaptation.render(data, {'mode': 'no_drums'})
+        held, report = adaptation.render(data, {'mode': 'no_drums', 'soft_pedal': True})
+        self.assertFalse(plain_report['soft_pedal'])
+        self.assertTrue(report['soft_pedal'])
+        self.assertIn('Extra quiet holds the soft pedal', report['notice'])
+        self.assertEqual(note_values(parsed(plain)), note_values(parsed(held)))
+        self.assertFalse([event for event in parsed(plain).instruments[0].control_changes if event.number == 67])
+        soft = [(round(event.time, 5), event.value) for event in parsed(held).instruments[0].control_changes if event.number == 67]
+        self.assertEqual(soft, [(0, 127), (.5, 127), (2.5, 0)])
+        # At a shared moment the pedal reaches the piano before the notes it should soften.
+        events = [event for track in mido.MidiFile(file=io.BytesIO(held)).tracks for event in track if event.type in ('control_change', 'note_on')]
+        self.assertEqual((events[0].type, events[0].control), ('control_change', 67))
+        original, _ = adaptation.render(data, {'mode': 'original', 'soft_pedal': True})
+        self.assertEqual(original, data)
+
+    def test_soft_pedal_replaces_the_files_own_soft_pedal(self):
+        score = mido.MidiFile(file=io.BytesIO(fixture([(0, 0, 'Piano', [(60, 0, 960, 70)], False)])))
+        score.tracks[1].insert(2, mido.Message('control_change', channel=0, control=67, value=0, time=0))
+        buffer = io.BytesIO(); score.save(file=buffer)
+        held, _ = adaptation.render(buffer.getvalue(), {'mode': 'no_drums', 'soft_pedal': True})
+        soft = [event.value for event in parsed(held).instruments[0].control_changes if event.number == 67]
+        self.assertEqual(soft, [127, 0])
+
     def test_expressive_accents_downbeats_and_leaves_original_unchanged(self):
         steady = [(60, step * 240, step * 240 + 200, 64) for step in range(32)]
         data = fixture([(0, 0, 'Piano', steady, False)])

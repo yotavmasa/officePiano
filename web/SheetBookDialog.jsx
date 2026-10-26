@@ -154,7 +154,7 @@ export default function SheetBookDialog({ item, api, fetchPreview, onClose, onCo
   }
 
   return <dialog ref={dialog} className="sheet-book-dialog" onCancel={event => { event.preventDefault(); if (!saving) onClose(); }}>
-    <div className="dialog-head"><div><h2>Browse songs</h2><p className="section-note">{item.name} · {book?.page_count || item.page_count} pages</p></div><button className="icon-button" aria-label="Close dialog" disabled={saving} onClick={onClose}>×</button></div>
+    <div className="dialog-head"><div><h2>Browse songs</h2><p className="section-note">{item.name} · {book?.page_count || item.page_count} pages</p></div><button className="icon-button" aria-label="Close dialog" title="Close" disabled={saving} onClick={onClose}>×</button></div>
     <p className="dialog-hint">Detected suggestions—review the pages before adding. Click a song to preview its sheet music; choose the songs you want to convert.</p>
     {working && <p className="sheet-analysis-progress" role="status"><span className="spinner" />Finding songs… {analysisProgressText(book.analysis_progress, book.page_count)}</p>}
     {!book && !error && <p className="dialog-hint" role="status">Opening the book…</p>}

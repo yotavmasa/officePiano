@@ -305,7 +305,7 @@ class MidiEngine:
     def _panic(self):
         messages = [mido.Message('note_off', channel=channel, note=note, velocity=0) for channel, note in sorted(self.active_notes)]
         for channel in range(16):
-            messages += [mido.Message('control_change', channel=channel, control=control, value=0) for control in (64, 120, 123)]
+            messages += [mido.Message('control_change', channel=channel, control=control, value=0) for control in (64, 66, 67, 120, 123)]
         try:
             self._send(messages)
         except Exception as error:

@@ -280,6 +280,12 @@ def render(data, settings):
                               for control in pedal_source.control_changes if control.number in (64, 66, 67)]
     if mode in ('no_drums', 'smart', 'custom'):
         output.control_changes = _merge_pedals(pretty, instruments)
+    soft_pedal = settings.get('soft_pedal') is True
+    if soft_pedal:
+        # Re-press at every attack so the pedal is down again right after a seek or resume.
+        output.control_changes = [control for control in output.control_changes if control.number != 67]
+        output.control_changes += [pretty.ControlChange(number=67, value=127, time=start) for start in sorted({note.start for note in notes})]
+        output.control_changes.append(pretty.ControlChange(number=67, value=0, time=max(note.end for note in notes)))
     # Retain the parsed score's tempo and signatures instead of building a new clock.
     music.instruments = [output]
     buffer = io.BytesIO()
@@ -302,10 +308,12 @@ def render(data, settings):
         notice += ' Repeated attacks within a part are preserved with an 8 ms release gap inside overlapping holds. Mostly playable parts keep their original register; no polyphony cap is applied.'
     if expressive:
         notice += ' Expressive playback reshapes velocities by rule: louder melody, metric accents, phrase arcs following the melody, weight for longer notes and slight variation.'
+    if soft_pedal:
+        notice += ' Extra quiet holds the soft pedal for the whole song instead of following the MIDI file.'
     if outside:
         notice += f' {outside} notes outside the piano range were left out rather than moving the whole part.'
     if shifted_notes:
         notice += f' {shifted_notes} notes were shifted by octaves to fit the 88-key range.'
     return rendered, {'mode': mode, 'label': LABELS[mode], 'selected_parts': selected,
                       'selected_names': selected_names, 'removed_notes': removed_notes,
-                      'shifted_notes': shifted_notes, 'merged_notes': merged_notes, 'out_of_range_notes': outside, 'notice': notice, 'duration_seconds': duration, 'original': False, 'expressive': expressive}
+                      'shifted_notes': shifted_notes, 'merged_notes': merged_notes, 'out_of_range_notes': outside, 'notice': notice, 'duration_seconds': duration, 'original': False, 'expressive': expressive, 'soft_pedal': soft_pedal}

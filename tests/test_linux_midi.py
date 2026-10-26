@@ -131,6 +131,8 @@ class EngineTests(unittest.TestCase):
         self.engine.command({'action': 'stop'})
         self.assertEqual(self.engine.status()['seconds'], 0)
         self.assertFalse(self.engine.status()['paused'])
+        released = {msg.control for msg in port.messages if msg.type == 'control_change' and msg.channel == 0 and msg.value == 0}
+        self.assertTrue({64, 66, 67} <= released)
 
     def test_seek_preserves_playing_and_paused_states(self):
         self.play()
