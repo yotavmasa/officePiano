@@ -21,6 +21,23 @@ class MetadataOrderTests(unittest.TestCase):
         self.temp=tempfile.TemporaryDirectory();self.lib=Library(self.temp.name)
     def tearDown(self):
         self.lib.db.close();self.temp.cleanup()
+    def test_removing_from_playlist_keeps_song_and_undo_restores_its_place(self):
+        songs=[self.lib.add(midi(60+index),f'Song {index}.mid') for index in range(4)]
+        identity=self.lib.mutate({'action':'create','name':'Mix'})['libraries'][0]['id']
+        self.lib.mutate({'action':'create','name':'Other'})
+        other=next(item['id'] for item in self.lib.snapshot()['libraries'] if item['name']=='Other')
+        for song in songs:self.lib.mutate({'action':'assign','song_id':song['id'],'library_id':identity})
+        self.lib.mutate({'action':'assign','song_id':songs[1]['id'],'library_id':other})
+        playlist=lambda key:next(item for item in self.lib.snapshot()['libraries'] if item['id']==key)['song_ids']
+        order=playlist(identity)
+        self.lib.mutate({'action':'assign','song_id':songs[1]['id'],'library_id':identity,'value':False})
+        self.assertNotIn(songs[1]['id'],playlist(identity))
+        self.assertIn(songs[1]['id'],playlist(other))
+        self.assertIn(songs[1]['id'],[song['id'] for song in self.lib.snapshot()['songs']])
+        self.lib.mutate({'action':'assign','song_id':songs[1]['id'],'library_id':identity,'value':True})
+        self.assertEqual(playlist(identity)[-1],songs[1]['id'])
+        self.lib.mutate({'action':'reorder','library_id':identity,'song_ids':order})
+        self.assertEqual(playlist(identity),order)
     def test_metadata_inference_edits_and_cover_do_not_overwrite_manual_choice(self):
         song=self.lib.add(midi(60),'Billy_Joel_-_Piano_Man.mid')
         self.assertEqual(song['artist'],'Billy Joel')

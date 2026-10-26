@@ -375,7 +375,7 @@ function App() {
   useEffect(() => {
     if (!notice) return setNoticePaused(false);
     if (noticePaused) return;
-    const lingers = !notice.success || notice.undoSongIds || notice.undoSheetId;
+    const lingers = !notice.success || notice.undoSongIds || notice.undoSheetId || notice.undoPlaylist;
     const timer = setTimeout(() => setNotice(null), lingers ? 10000 : 5000);
     return () => clearTimeout(timer);
   }, [notice, noticePaused]);
@@ -1129,6 +1129,23 @@ function App() {
     const result = await eachSong(missing, songId => post('/api/library', { action: 'assign', song_id: songId, library_id: item.id, value: true }), `Added ${countSongs(missing.length)} to ${item.name}.`);
     if (result) setDialog(null);
   }
+  async function removeFromLibrary(songIds, item) {
+    const order = [...item.song_ids];
+    const result = await eachSong(songIds, songId => post('/api/library', { action: 'assign', song_id: songId, library_id: item.id, value: false }));
+    if (!result) return;
+    setSelected(previous => previous.filter(id => !songIds.includes(id)));
+    setNotice({ text: `Removed ${countSongs(songIds.length)} from ${item.name}.`, success: true, undoPlaylist: { item, songIds, order } });
+  }
+  async function undoRemoveFromLibrary({ item, songIds, order }) {
+    await run(async () => {
+      let data = null;
+      for (const songId of songIds) data = await post('/api/library', { action: 'assign', song_id: songId, library_id: item.id, value: true });
+      // Put the songs back where they were; anything added since keeps its place after them.
+      const current = data.library.libraries.find(entry => entry.id === item.id)?.song_ids || [];
+      const restored = [...order.filter(id => current.includes(id)), ...current.filter(id => !order.includes(id))];
+      return post('/api/library', { action: 'reorder', library_id: item.id, song_ids: restored });
+    }, `Restored ${countSongs(songIds.length)} to ${item.name}.`);
+  }
   async function createLibraryWith(name, songIds) {
     return run(async () => {
       let data = await post('/api/library', { action: 'create', name });
@@ -1154,6 +1171,7 @@ function App() {
         { label: `Add ${countSongs(ids.length)} to queue`, icon: 'plus', disabled: busy, onSelect: () => addSongsToQueue(ids) },
         { label: allFavorite ? 'Remove from favorites' : 'Add to favorites', icon: 'heart', disabled: busy, onSelect: () => favoriteSongs(ids, !allFavorite) },
         { label: 'Add to playlist…', icon: 'folder', disabled: busy, onSelect: () => setDialog({ type: 'bulk_assign', songIds: ids }) },
+        selectedLibrary && { label: `Remove ${countSongs(ids.length)} from ${selectedLibrary.name}`, icon: 'close', disabled: busy, onSelect: () => removeFromLibrary(ids, selectedLibrary) },
         { separator: true, key: 'danger' },
         { label: `Delete ${countSongs(ids.length)}…`, icon: 'trash', danger: true, disabled: busy, onSelect: () => setDialog({ type: 'bulk_delete', songIds: ids }) },
       ];
@@ -1163,6 +1181,7 @@ function App() {
       { label: 'Add to queue', icon: 'plus', disabled: busy, onSelect: () => queueAction('add', { song_id: song.id }, 'Added to the Player queue.') },
       { label: song.favorite ? 'Remove from favorites' : 'Add to favorites', icon: 'heart', disabled: busy, onSelect: () => run(() => post('/api/library', { action: 'favorite', song_id: song.id, value: !song.favorite })) },
       { label: 'Add to playlist…', icon: 'folder', onSelect: () => setDialog({ type: 'assign', songId: song.id }) },
+      selectedLibrary && { label: `Remove from ${selectedLibrary.name}`, icon: 'close', disabled: busy, onSelect: () => removeFromLibrary([song.id], selectedLibrary) },
       { separator: true, key: 'settings' },
       { label: 'Playback sound…', icon: 'piano', disabled: busy, onSelect: () => openAdaptation(song.id) },
       { label: 'Edit details…', icon: 'edit', disabled: busy, onSelect: () => startEditDetails([song]) },
@@ -1392,7 +1411,7 @@ function App() {
     <main className={`main ${notesFit ? 'main-fit' : ''}`}>
       <header className="topbar"><div className="topbar-status">{connectionStatus}<button type="button" className="icon-button" aria-label="Control over Wi-Fi" title="Control over Wi-Fi" onClick={() => { setCopied(false); setDialog({ type: 'remote' }); }}><Icon name="wifi" /></button></div></header>
       <div className="intro"><div><h1>{view === 'player' ? 'Player' : view === 'discover' ? 'Discover' : view === 'sheets' ? 'Sheet music' : 'Your music'}</h1></div>{(view === 'all' || selectedLibrary) && <button className="btn light" onClick={() => fileInput.current?.click()} disabled={busy} title={selectedLibrary ? `Upload MIDI to ${selectedLibrary.name}` : 'Upload MIDI to All songs'}><Icon name="upload" />Upload MIDI</button>}{view === 'sheets' && <button className="btn light" onClick={() => sheetInput.current?.click()} disabled={busy}><Icon name="upload" />Upload sheet music</button>}<input ref={sheetInput} type="file" accept=".pdf,.png,.jpg,.jpeg,.xml,.musicxml,.mxl" multiple onChange={uploadSheets} hidden /><input ref={fileInput} type="file" accept=".mid,.midi" multiple onChange={upload} hidden /></div>
-      {notice && <div className={`message visible top-notice ${notice.success ? 'success' : ''}`} role={notice.success ? 'status' : 'alert'} aria-live="polite" onMouseEnter={() => setNoticePaused(true)} onMouseLeave={() => setNoticePaused(false)} onFocus={() => setNoticePaused(true)} onBlur={() => setNoticePaused(false)}><span className="top-notice-text">{notice.text}{notice.undoSheetId && <button className="btn light small" style={{ marginLeft: 12 }} onClick={async () => { const result = await run(() => post('/api/sheets/restore', { id: notice.undoSheetId }), 'File restored.'); if (result) await refreshSheets(); }}>Undo</button>}{notice.undoSongIds && <button className="btn light small" style={{ marginLeft: 12 }} onClick={() => eachSong(notice.undoSongIds, songId => post('/api/library', { action: 'restore', song_id: songId }), notice.undoSongIds.length === 1 ? 'Song restored.' : `${countSongs(notice.undoSongIds.length)} restored.`)}>Undo</button>}</span><button type="button" className="top-notice-close" aria-label="Dismiss message" title="Dismiss" onClick={() => setNotice(null)}><Icon name="close" /></button></div>}
+      {notice && <div className={`message visible top-notice ${notice.success ? 'success' : ''}`} role={notice.success ? 'status' : 'alert'} aria-live="polite" onMouseEnter={() => setNoticePaused(true)} onMouseLeave={() => setNoticePaused(false)} onFocus={() => setNoticePaused(true)} onBlur={() => setNoticePaused(false)}><span className="top-notice-text">{notice.text}{notice.undoSheetId && <button className="btn light small" style={{ marginLeft: 12 }} onClick={async () => { const result = await run(() => post('/api/sheets/restore', { id: notice.undoSheetId }), 'File restored.'); if (result) await refreshSheets(); }}>Undo</button>}{notice.undoSongIds && <button className="btn light small" style={{ marginLeft: 12 }} onClick={() => eachSong(notice.undoSongIds, songId => post('/api/library', { action: 'restore', song_id: songId }), notice.undoSongIds.length === 1 ? 'Song restored.' : `${countSongs(notice.undoSongIds.length)} restored.`)}>Undo</button>}{notice.undoPlaylist && <button className="btn light small" style={{ marginLeft: 12 }} disabled={busy} onClick={async () => { const undo = notice.undoPlaylist; setNotice(null); await undoRemoveFromLibrary(undo); }}>Undo</button>}</span><button type="button" className="top-notice-close" aria-label="Dismiss message" title="Dismiss" onClick={() => setNotice(null)}><Icon name="close" /></button></div>}
 
       {view === 'player' && <section aria-label="Player" className={notesFit ? 'player-fit' : undefined}>
         <section className="player" aria-label="Piano player"><div className="art-column"><div className={`art ${showArtwork ? 'has-cover' : ''}`} aria-hidden="true">{canLoadArtwork && <img className={`album-cover ${showArtwork ? 'is-ready' : ''}`} src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} />}{!showArtwork && <div className="keys">{[true, true, false, true, true, true, false].map((black, index) => <i className={black ? 'black' : ''} key={index} />)}</div>}</div>{spotifyLink && <a className="spotify-cover-link" href={spotifyLink} target="_blank" rel="noopener noreferrer" aria-label="Find this album on Spotify" title="Find this album on Spotify"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1ed760" stroke="none"/><path d="M5 8c5-1.7 10-1.2 14 1M6 12c4-1.3 8-1 12 1M7 16c3-.8 6-.5 9 1" fill="none" stroke="#121d16" strokeWidth="1.7" strokeLinecap="round"/></svg>Spotify ↗</span></a>}</div><div className="player-content"><div className="eyebrow"><span className="playing-pulse" /><span>{onDevice && local.loading ? 'Loading…' : isPlaying ? 'Now playing' : isPaused ? 'Paused' : 'Ready when you are'}</span></div><h2 className="song-title">{playerName ? songTitle(playerName) : 'Waiting for a song'}</h2><p className="player-record">{[playerSong?.artist, playerSong?.album].filter(Boolean).join(' · ') || '\u00a0'}</p><p className="song-meta">{playerName ? [playerSong?.piano_only === true ? 'Piano only' : 'Other MIDI', playerSong?.source_url ? providerName(playerSong.source_url) : playerSong?.source_kind === 'sheet' ? 'Sheet music' : ''].filter(Boolean).join(' · ') : '\u00a0'}</p><div className="progress-row"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Song timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
@@ -1428,6 +1447,7 @@ function App() {
           <button className="btn light small" disabled={busy} onClick={() => addSongsToQueue(selectedIds)}><Icon name="plus" />Add to queue</button>
           <button className="btn light small" disabled={busy} onClick={() => favoriteSongs(selectedIds, !selectedSongs.every(song => song.favorite))}><Icon name="heart" />{selectedSongs.every(song => song.favorite) ? 'Remove from favorites' : 'Add to favorites'}</button>
           <button className="btn light small" disabled={busy} onClick={() => setDialog({ type: 'bulk_assign', songIds: selectedIds })}><Icon name="folder" />Add to playlist</button>
+          {selectedLibrary && <button className="btn light small" disabled={busy} onClick={() => removeFromLibrary(selectedIds, selectedLibrary)}><Icon name="close" />Remove from playlist</button>}
           <button className="btn light small bulk-delete" disabled={busy} onClick={() => setDialog({ type: 'bulk_delete', songIds: selectedIds })}><Icon name="trash" />Delete</button>
           <button className="btn light small" onClick={() => setSelected([])}>Clear</button>
         </div>
