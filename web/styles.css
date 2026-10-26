@@ -702,6 +702,7 @@ dialog::backdrop {
 }
 .dialog-actions {
   display:flex;
+  flex-wrap:wrap;
   justify-content:flex-end;
   gap:9px;
   margin-top:15px
