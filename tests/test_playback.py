@@ -312,3 +312,47 @@ class QueueTests(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class PlayChosenSongTests(unittest.TestCase):
+    def setUp(self):
+        self.library, self.engine = FakeLibrary(), FakeEngine()
+        self.library.songs |= {'D', 'E'}
+        self.player = Playback(self.library, self.engine.send, self.engine.load, lambda: self.engine.song)
+        self.player.mutate({'action': 'replace', 'song_ids': ['A', 'B', 'C']})
+
+    def test_playing_a_new_song_replaces_now_playing_and_keeps_the_queue(self):
+        self.player.control('play')
+        self.player.control('play', {'song_id': 'D'})
+        self.assertEqual((self.player.song_ids, self.player.index, self.engine.song), (['D', 'B', 'C'], 0, 'D'))
+        self.assertTrue(self.player.running)
+        self.assertEqual(self.library.settings['queue']['song_ids'], ['D', 'B', 'C'])
+        self.engine.playing = False
+        self.player.tick()
+        self.assertEqual((self.player.song_ids, self.engine.song), (['B', 'C'], 'B'))
+
+    def test_playing_a_song_queued_later_does_not_skip_the_songs_before_it(self):
+        self.player.control('play')
+        self.player.control('play', {'song_id': 'C'})
+        self.assertEqual((self.player.song_ids, self.player.index, self.engine.song), (['C', 'B', 'C'], 0, 'C'))
+        self.player.control('play', {'song_id': 'C'})
+        self.assertEqual(self.engine.loads, ['A', 'C'])
+
+    def test_empty_queue_starts_with_the_song_and_failed_load_restores_the_queue(self):
+        self.player.mutate({'action': 'clear'})
+        self.player.control('play', {'song_id': 'E'})
+        self.assertEqual((self.player.song_ids, self.player.index), (['E'], 0))
+        self.engine.fail_load = 'D'
+        with self.assertRaises(ValueError):
+            self.player.control('play', {'song_id': 'D'})
+        self.assertEqual(self.player.song_ids, ['E'])
+
+    def test_replace_current_swaps_one_slot_without_playing(self):
+        self.player.mutate({'action': 'replace_current', 'song_id': 'D', 'index': 1, 'expected_song_ids': ['A', 'B', 'C']})
+        self.assertEqual((self.player.song_ids, self.player.index, self.player.running), (['A', 'D', 'C'], 0, False))
+        self.assertEqual(self.engine.loads, [])
+        with self.assertRaises(ValueError):
+            self.player.mutate({'action': 'replace_current', 'song_id': 'E', 'index': 1, 'expected_song_ids': ['A', 'B', 'C']})
+        self.player.mutate({'action': 'clear'})
+        self.player.mutate({'action': 'replace_current', 'song_id': 'E'})
+        self.assertEqual((self.player.song_ids, self.player.index), (['E'], 0))
