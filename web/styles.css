@@ -1777,8 +1777,10 @@ h2,
 .mini-player-controls { display: flex; align-items: center; justify-content: center; gap: 12px; }
 .mini-player-controls > button { width: 36px; height: 36px; display: grid; place-items: center; }
 .mini-player-play { border-radius: 50%; background: var(--white); color: var(--indigo); }
-.mini-player-actions { justify-self: end; display: flex; align-items: center; gap: 4px; }
+.mini-player-actions { justify-self: end; display: flex; align-items: center; gap: 6px; }
 .mini-player-actions .device-picker-button { width: 36px; height: 36px; }
+/* A lit toggle fills a 30px square inside its 36px button, so neighbours keep clear space between them. */
+.mini-player-actions .expressive-button, .mini-player-actions .expressive-button.is-on { padding: 3px; background-clip: content-box; }
 .mini-player-volume { margin-left: 6px; }
 .mini-player .volume-wrap { width: auto; max-width: none; gap: 8px; }
 .mini-player .volume-wrap input { flex: none; width: 90px; min-width: 0; }
