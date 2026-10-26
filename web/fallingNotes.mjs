@@ -21,6 +21,12 @@ export function keyLayout(width) {
   return keys;
 }
 
+// Softer notes fade out; the floor keeps pianissimo notes visible.
+export function noteOpacity(velocity) {
+  const level = Math.min(127, Math.max(0, Number(velocity) || 0)) / 127;
+  return 0.2 + 0.8 * level;
+}
+
 export function longestNote(notes) {
   return notes.reduce((longest, note) => Math.max(longest, note.duration), 0);
 }
