@@ -10,6 +10,7 @@ import '@fontsource/dm-mono/400.css';
 import './styles.css';
 import { SortableList, SortableItem } from './SortableList.jsx';
 import { groupSheetSongs } from './sheetGroups.mjs';
+import { applyQueueAction, readDeviceQueue } from './deviceQueue.mjs';
 import SheetBookDialog, { analysisProgressText } from './SheetBookDialog.jsx';
 import { useLocalListener } from './useLocalListener.mjs';
 import { parseMidi } from './localPiano.mjs';
@@ -411,7 +412,8 @@ function App() {
     return response.arrayBuffer();
   }, [key, clientId]);
   const [output, setOutput] = useState(() => storage.get('piano-output') === 'device' ? 'device' : 'piano');
-  const [localIndex, setLocalIndex] = useState(null);
+  const [deviceQueue, setDeviceQueue] = useState(() => readDeviceQueue(storage.get('piano-device-queue')));
+  const deviceQueueRef = useRef(deviceQueue);
   const advanceLocal = useRef(null);
   // Device playback and falling notes use the song's playback sound, like the piano.
   const parsedSongs = useRef(new Map());
@@ -456,8 +458,7 @@ function App() {
   }, [queueOpen]);
   async function listenHere(song, index = null, startAt = 0) {
     announce('');
-    setLocalIndex(index);
-    if (index !== null && status?.queue?.song_ids?.[index] === song.id) post('/api/queue', { action: 'select', index }).then(refresh, () => {});
+    if (index !== null && deviceQueueRef.current.song_ids[index] === song.id) changeDeviceQueue({ action: 'select', index });
     try { await local.listen(song, startAt); }
     catch (error) { announce(error.message || 'This song could not play on this device.'); }
   }
@@ -573,26 +574,34 @@ function App() {
   }
   const pressKey = (pitch, velocity) => onDevice ? local.press(pitch, velocity) : sendPianoKey(pitch, velocity, true);
   const releaseKey = pitch => onDevice ? local.release(pitch) : sendPianoKey(pitch, 1, false);
-  async function queueAction(action, payload = {}, success = '', showPlayer = false) {
+  function changeDeviceQueue(request) {
+    const { queue: next, stop } = applyQueueAction(deviceQueueRef.current, request);
+    deviceQueueRef.current = next;
+    setDeviceQueue(next);
+    storage.set('piano-device-queue', JSON.stringify(next));
+    if (stop) local.stop();
+    return { ok: true, queue: next };
+  }
+  // This device keeps its own queue, so listening here never changes what the piano plays next.
+  const queuePost = (data, target = output) => target === 'device' ? Promise.resolve().then(() => changeDeviceQueue(data)) : post('/api/queue', data);
+  async function queueAction(action, payload = {}, success = '', showPlayer = false, target = output) {
     const result = await run(() => {
       const data = { action, ...payload };
       if (action === 'play') data.device = requireDevice();
-      return post('/api/queue', data);
+      return queuePost(data, target);
     }, success);
     if (result && showPlayer) navigate('player');
     return result;
   }
   const control = action => run(() => post('/api/control', { action, device: Number(device?.id || 0) }));
-  const queue = status?.queue || { song_ids: [], index: -1 };
+  const onDevice = output === 'device';
+  const queue = onDevice ? deviceQueue : status?.queue || { song_ids: [], index: -1 };
   const queueIds = queue.song_ids || [];
   const queueIndex = Number.isInteger(queue.index) ? queue.index : -1;
   const playing = !!status?.playing;
   const current = library.songs.find(song => song.id === status?.song_id);
-  const selectedIndex = status?.song_id ? (queueIds[queueIndex] === status.song_id ? queueIndex : queueIds.indexOf(status.song_id)) : queueIds.length ? Math.max(0, queueIndex) : -1;
-  const selectedSong = current || library.songs.find(song => song.id === queueIds[selectedIndex]);
-  const onDevice = output === 'device';
-  const deviceSong = local.song ? library.songs.find(song => song.id === local.song.id) || local.song : selectedSong;
-  const deviceIndex = local.song ? (queueIds[localIndex] === local.song.id ? localIndex : queueIds.indexOf(local.song.id)) : selectedIndex;
+  const deviceIndex = deviceQueue.song_ids.length ? deviceQueue.index : -1;
+  const deviceSong = local.song ? library.songs.find(song => song.id === local.song.id) || local.song : library.songs.find(song => song.id === deviceQueue.song_ids[deviceIndex]);
   const playerSong = onDevice ? deviceSong : current;
   const playerName = onDevice ? deviceSong?.name || '' : status?.name || '';
   const playerSongId = onDevice ? deviceSong?.id || '' : status?.song_id || '';
@@ -605,7 +614,7 @@ function App() {
     const finished = deviceIndex;
     const next = songAt(finished + 1);
     try {
-      await post('/api/queue', { action: 'finish', index: finished, song_id: queueIds[finished] });
+      changeDeviceQueue({ action: 'finish', index: finished, song_id: queueIds[finished] });
     } catch (error) {
       announce(error.message);
       return;
@@ -708,27 +717,26 @@ function App() {
     if (showPlayer) navigate('player');
     await listenHere(song, index);
   }
-  async function chooseOutput(next) {
+  function chooseOutput(next) {
     if (next === output) return;
+    // Someone may be listening to the piano, so ask before taking its song away.
+    if (next === 'device' && playing && current) return setDialog({ type: 'take_song' });
+    return switchOutput(next);
+  }
+  async function switchOutput(next, takeSong = false) {
     setOutput(next);
     storage.set('piano-output', next);
     setSeekPreview(null);
     if (next === 'device') {
-      if (playing && current) {
-        listenHere(current, selectedIndex >= 0 ? selectedIndex : null, status?.seconds || 0);
-        await control('pause');
-      }
+      if (!takeSong || !current) return;
+      const song = current, at = status?.seconds || 0;
+      const placed = await queueAction('replace_current', { song_id: song.id }, '', false, 'device');
+      if (!placed || !await control('pause')) return;
+      await listenHere(song, placed.queue.index, at);
       return;
     }
-    const transfer = local.state === 'playing' && deviceSong ? { song: deviceSong, index: deviceIndex, at: local.position } : null;
+    // Leaving this computer stops its playback; the piano never starts on its own.
     local.stop();
-    if (!transfer) return;
-    if (!playable) {
-      announce('Connect your piano to continue playing there.');
-      return;
-    }
-    const started = await queueAction('play', transfer.index >= 0 ? { index: transfer.index } : { song_id: transfer.song.id });
-    if (started && transfer.at > 1) await run(() => post('/api/control', { action: 'seek', seconds: transfer.at, song_id: transfer.song.id }));
   }
   const thisDevice = /iPhone|Android.+Mobile/i.test(navigator.userAgent) ? { name: 'This phone', icon: 'phone' }
     : /iPad|Android/i.test(navigator.userAgent) || navigator.maxTouchPoints > 1 && /Macintosh/.test(navigator.userAgent) ? { name: 'This tablet', icon: 'phone' }
@@ -785,8 +793,8 @@ function App() {
     // Show the new order right away so the row stays where it was dropped; refresh() restores the saved order if the request fails.
     if (drag.kind === 'queue') {
       const songIds = reorderedSongIds(originalIds, originalIds, drag.from, drag.to);
-      setStatus(previous => previous && { ...previous, queue: { ...previous.queue, song_ids: songIds } });
-      await runTask.current(() => post('/api/queue', { action: 'move', from: drag.from, to: drag.to, expected_song_ids: originalIds }));
+      if (output !== 'device') setStatus(previous => previous && { ...previous, queue: { ...previous.queue, song_ids: songIds } });
+      await runTask.current(() => queuePost({ action: 'move', from: drag.from, to: drag.to, expected_song_ids: originalIds }));
     } else {
       const fullOrder = reorderedSongIds(now.fullIds, originalIds, drag.from, drag.to);
       setLibrary(previous => now.libraryId
@@ -1077,6 +1085,9 @@ function App() {
     const inside = stack.find(element => element.closest?.('#queue-panel'));
     return inside ? queueDropTarget({ target: inside, clientY: point.y }) : null;
   }
+  const selectedIds = selected.filter(id => library.songs.some(song => song.id === id));
+  // Dragging one of several checked songs carries all of them, in list order.
+  const draggedSongIds = songId => selectedIds.length > 1 && selectedIds.includes(songId) ? [...selectedIds].sort((a, b) => savedOrder.indexOf(a) - savedOrder.indexOf(b)) : [songId];
   const songQueueDrag = {
     isOutside: point => !!queueTargetAt(point),
     onOutsideMove: point => {
@@ -1090,13 +1101,20 @@ function App() {
       const target = queueTargetAt(point);
       setQueueDrop(null);
       setLibraryDrop('');
-      if (target?.library) return addToLibrary(songId, target.library);
-      if (target) queueAction('add', target.button ? { song_id: songId } : { song_id: songId, index: target.index, expected_song_ids: queueIds }, 'Added to the queue.');
+      const songIds = draggedSongIds(songId);
+      if (target?.library) {
+        const destination = library.libraries.find(item => item.id === target.library);
+        return songIds.length > 1 ? destination && addSongsToLibrary(songIds, destination) : addToLibrary(songId, target.library);
+      }
+      if (!target) return;
+      const expected = queueIds;
+      eachSong(songIds.map((id, offset) => ({ id, offset })), ({ id, offset }) => queuePost(target.button ? { action: 'add', song_id: id }
+        : offset ? { action: 'add', song_id: id, index: target.index + offset } : { action: 'add', song_id: id, index: target.index, expected_song_ids: expected }),
+      songIds.length > 1 ? `Added ${countSongs(songIds.length)} to the queue.` : 'Added to the queue.');
     },
-    outsideHint: 'Drop to add it here',
+    outsideHint: draggingSong && draggedSongIds(draggingSong).length > 1 ? `Drop to add ${draggedSongIds(draggingSong).length} songs here` : 'Drop to add it here',
   };
 
-  const selectedIds = selected.filter(id => library.songs.some(song => song.id === id));
   const selectedSongs = selectedIds.map(id => library.songs.find(song => song.id === id));
   function toggleSelected(songId) {
     setSelected(previous => previous.includes(songId) ? previous.filter(id => id !== songId) : [...previous, songId]);
@@ -1123,7 +1141,7 @@ function App() {
     }, success);
   }
   const countSongs = count => `${count} ${count === 1 ? 'song' : 'songs'}`;
-  const addSongsToQueue = songIds => eachSong(songIds, songId => post('/api/queue', { action: 'add', song_id: songId }), `Added ${countSongs(songIds.length)} to the queue.`);
+  const addSongsToQueue = songIds => eachSong(songIds, songId => queuePost({ action: 'add', song_id: songId }), `Added ${countSongs(songIds.length)} to the queue.`);
   const favoriteSongs = (songIds, value) => eachSong(songIds, songId => post('/api/library', { action: 'favorite', song_id: songId, value }), value ? `Added ${countSongs(songIds.length)} to favorites.` : `Removed ${countSongs(songIds.length)} from favorites.`);
   async function addSongsToLibrary(songIds, item) {
     const missing = songIds.filter(songId => !(library.songs.find(song => song.id === songId)?.library_ids || []).includes(item.id));
@@ -1312,7 +1330,7 @@ function App() {
   }
   async function removeQueued(indexes) {
     const ordered = [...new Set(indexes)].sort((a, b) => b - a);
-    const result = await eachSong(ordered, index => post('/api/queue', { action: 'remove', index }), ordered.length > 1 ? `Removed ${countSongs(ordered.length)} from the queue.` : '');
+    const result = await eachSong(ordered, index => queuePost({ action: 'remove', index }), ordered.length > 1 ? `Removed ${countSongs(ordered.length)} from the queue.` : '');
     if (result) setQueueSelected([]);
   }
   function queueMenuItems(index) {
@@ -1343,14 +1361,17 @@ function App() {
     onDropOutside: (point, entry) => {
       const target = queueTargetAt(point)?.library;
       setLibraryDrop('');
-      if (target) addToLibrary(queueIds[queueEntryIds.indexOf(entry)], target);
+      if (!target) return;
+      const destination = library.libraries.find(item => item.id === target);
+      if (queueSelectedKeys.length > 1 && queueSelectedKeys.includes(entry)) return destination && addSongsToLibrary(queueSelectedSongs, destination);
+      addToLibrary(queueIds[queueEntryIds.indexOf(entry)], target);
     },
     outsideHint: 'Drop to add it here',
   };
   const queueContent = <>
-        <div className="content-heading queue-header"><h2>Queue</h2></div>
+        <div className="content-heading queue-header"><h2>{onDevice ? `Your queue on ${thisDevice.name.toLowerCase()}` : 'Piano queue'}</h2></div>
         {queueSelectedKeys.length > 0 && <div className="queue-bulk" role="toolbar" aria-label="Selected queued songs"><strong>{countSongs(queueSelectedKeys.length)} selected</strong><div className="bulk-actions"><button className="btn light small" disabled={busy} onClick={() => removeQueued(queueSelectedIndexes)}><Icon name="close" />Remove</button><button className="btn light small" disabled={busy} onClick={() => favoriteSongs(queueSelectedSongs, !queueSelectedSongs.every(id => library.songs.find(item => item.id === id)?.favorite))}><Icon name="heart" />{queueSelectedSongs.every(id => library.songs.find(item => item.id === id)?.favorite) ? 'Unfavorite' : 'Favorite'}</button><button className="btn light small" disabled={busy} onClick={() => setDialog({ type: 'bulk_assign', songIds: queueSelectedSongs })}><Icon name="folder" />Playlist</button><button className="btn light small" onClick={() => setQueueSelected([])}>Clear</button></div></div>}
-        {!queueIds.length ? <div className="song-list" role="list" aria-label="Song queue"><EmptyState title="Your next song starts here." description="Add a few favorites or queue an entire playlist. Nothing starts until you press play." button="Browse your music" onClick={() => navigate('all')} /></div> : <>
+        {!queueIds.length ? <div className="song-list" role="list" aria-label="Song queue"><EmptyState title="Your next song starts here." description={onDevice ? `Songs queued here play only on ${thisDevice.name.toLowerCase()}. The piano keeps its own queue.` : 'Add a few favorites or queue an entire playlist. Nothing starts until you press play.'} button="Browse your music" onClick={() => navigate('all')} /></div> : <>
           {hasCurrent && <div className="queue-section"><h3 className="queue-section-title">{nowLabel}</h3><div className="song-list queue-now" role="list" aria-label={nowLabel}>{queueRow(activeIndex)}</div></div>}
           {queueSections.map(section => {
             const entries = queueEntryIds.slice(section.start, section.end);
@@ -1557,6 +1578,7 @@ function App() {
       <div className="dialog-actions"><button className="btn light" disabled={busy} onClick={() => { adaptationRequest.current += 1; setDialog(null); }}>Cancel</button><button className="btn" disabled={busy || adaptationLoading || !adaptationData || adaptationMode === 'custom' && (!adaptationSongId || !adaptationParts.length) || adaptationMode === 'piano' && !!adaptationSongId && !hasPianoParts} onClick={applyAdaptation}>{dialog.applyNow ? 'Apply sound' : 'Save settings'}</button></div>
     </Dialog>}
 
+    {dialog?.type === 'take_song' && <Dialog title={`Play on ${thisDevice.name.toLowerCase()}`} onClose={() => setDialog(null)}><p className="dialog-hint">The piano is playing {songTitle(current?.name || 'a song')}. Take it with you, or let the piano keep playing while you listen to your own queue here.</p><div className="dialog-actions"><button className="btn light" onClick={() => { setDialog(null); switchOutput('device'); }}>Let the piano keep playing</button><button className="btn" onClick={() => { setDialog(null); switchOutput('device', true); }}>Take the song and pause the piano</button></div></Dialog>}
     {dialog?.type === 'connection' && <Dialog title="Connect to a device" onClose={() => setDialog(null)}><div className="device-dialog-list"><DeviceOptions current={currentEntry} others={otherEntries} playing={isPlaying} emptyNote={noPianoNote} onChoose={chooseDevice} /></div><div className="dialog-actions"><button className="btn light small" onClick={refresh}>Refresh devices</button><button className="btn small" disabled={busy || !wanted} onClick={() => run(() => post('/api/reconnect', { name: wanted }), 'Reconnecting your piano. Press Play once it is connected.')}>Reconnect piano</button></div><p className="dialog-hint" style={{ marginTop: 18 }}>We remember your piano and reconnect when its MIDI connection returns. Playback starts only when you press play.</p><p className="dialog-hint">If another app used the piano, disconnect it there first, then press Reconnect piano. {status?.platform === 'linux' ? 'On Raspberry Pi, choose your piano from the device list and press Reconnect piano. Keep it disconnected from other apps, or use USB.' : 'On your Mac, open Audio MIDI Setup → MIDI Studio → Bluetooth, then connect to Prodigy2 MIDI. Keep the Mac connected, or use USB.'}</p><p className="dialog-hint">{preferred ? `Remembered piano: ${preferred}. ` : ''}{status?.bluetooth?.message || ''}</p><div className="dialog-actions"><button className="btn" onClick={() => setDialog(null)}>Done</button></div></Dialog>}
     {['create', 'rename'].includes(dialog?.type) && <Dialog title={dialog.type === 'rename' ? 'Rename playlist' : 'A playlist of your own'} onClose={() => setDialog(null)}><form onSubmit={async event => {
       event.preventDefault();
