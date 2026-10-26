@@ -109,26 +109,15 @@ class AdaptationTests(unittest.TestCase):
         controls = adaptation._merge_pedals(pretty_midi, [first, second])
         self.assertEqual([(c.number, c.value, c.time) for c in controls], [(64, 127, 0), (64, 0, 1.5)])
 
-    def test_no_drums_preserves_all_other_events_at_their_original_ticks(self):
-        score = mido.MidiFile(file=io.BytesIO(fixture([PIANO_PART, BASS_PART, MELODY_PART, DRUM_PART])))
-        # A mixed track makes preserving delta times essential when drum events disappear.
-        score.tracks.append(mido.MidiTrack([mido.Message('note_on', channel=9, note=36, velocity=90, time=120), mido.Message('note_on', channel=3, note=12, velocity=31, time=120), mido.Message('note_off', channel=9, note=36, time=120), mido.Message('note_off', channel=3, note=12, time=120), mido.MetaMessage('end_of_track')]))
-        buffer = io.BytesIO(); score.save(file=buffer)
-        source = buffer.getvalue()
+    def test_no_drums_plays_every_other_part_on_one_piano_channel(self):
+        source = fixture([PIANO_PART, BASS_PART, MELODY_PART, DRUM_PART])
         rendered, report = adaptation.render(source, {'mode': 'no_drums'})
         result = mido.MidiFile(file=io.BytesIO(rendered))
-        def events(track):
-            tick, output = 0, []
-            for event in track:
-                tick += event.time
-                if getattr(event, 'channel', None) != 9:
-                    output.append((tick, event.copy(time=0)))
-            return output
-        self.assertEqual([events(t) for t in score.tracks], [events(t) for t in result.tracks])
-        self.assertFalse(any(getattr(e, 'channel', None) == 9 for t in result.tracks for e in t))
-        self.assertEqual(report['removed_notes'], 2)
-        self.assertEqual(report['shifted_notes'], 0)
-        self.assertEqual(source, buffer.getvalue())
+        channel_messages = [event for track in result.tracks for event in track if hasattr(event, 'channel')]
+        programs = [event.program for event in channel_messages if event.type == 'program_change']
+        self.assertEqual((note_values(parsed(rendered)), {event.channel for event in channel_messages}, set(programs), report['removed_notes'], report['shifted_notes']),
+                         ([(40, 0, 1.5, 55), (60, 0, .5, 72), (62, .5, 1., 31), (80, 0, .5, 44)], {0}, {0}, 1, 0))
+        self.assertEqual(source, fixture([PIANO_PART, BASS_PART, MELODY_PART, DRUM_PART]))
 
     def test_no_drums_rejects_a_drum_only_song(self):
         with self.assertRaisesRegex(ValueError, 'no notes outside'):

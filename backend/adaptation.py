@@ -173,36 +173,13 @@ def render(data, settings):
         parse_midi(data, piano_only=False)
         return data, {'mode': mode, 'label': LABELS[mode], 'selected_parts': [], 'selected_names': [],
                       'removed_notes': 0, 'shifted_notes': 0, 'notice': 'Original MIDI is unchanged.', 'original': True}
-    if mode == 'no_drums':
-        import mido
-        parse_midi(data, piano_only=False)
-        score = mido.MidiFile(file=io.BytesIO(data))
-        removed, kept = 0, 0
-        for index, track in enumerate(score.tracks):
-            output, pending = mido.MidiTrack(), 0
-            for message in track:
-                pending += message.time
-                if getattr(message, 'channel', None) == 9:
-                    removed += int(message.type == 'note_on' and message.velocity > 0)
-                    continue
-                kept += int(message.type == 'note_on' and message.velocity > 0)
-                output.append(message.copy(time=pending))
-                pending = 0
-            if pending:
-                output.append(mido.MetaMessage('end_of_track', time=pending))
-            score.tracks[index] = output
-        if not kept:
-            raise ValueError('This MIDI has no notes outside the drum channel. Choose another song or Original MIDI.')
-        buffer = io.BytesIO()
-        score.save(file=buffer)
-        rendered = buffer.getvalue()
-        metadata = parse_midi(rendered, piano_only=False)
-        return rendered, {'mode': mode, 'label': LABELS[mode], 'selected_parts': [], 'selected_names': [],
-                          'removed_notes': removed, 'shifted_notes': 0, 'duration_seconds': metadata['duration'],
-                          'notice': 'All instrument parts are preserved except the standard MIDI drum channel (10). Timing, notes, velocities, and pedals stay unchanged.', 'original': False}
     pretty, music = _read(data)
     parts = _parts(pretty, music)
-    if mode == 'piano':
+    if mode == 'no_drums':
+        selected = [part['id'] for part in parts if not part['is_drum'] and part['notes']]
+        if not selected:
+            raise ValueError('This MIDI has no notes outside the drum channel. Choose another song or Original MIDI.')
+    elif mode == 'piano':
         selected = [part['id'] for part in parts if part['program'] in range(8) and not part['is_drum'] and part['notes']]
         if not selected:
             raise ValueError('This MIDI has no piano or keyboard part. Choose Smart or Custom to adapt other instruments.')
@@ -236,8 +213,8 @@ def render(data, settings):
             if copy.pitch != note.pitch:
                 shifted.add(id(copy))
     merged_notes = 0
-    if mode in ('smart', 'custom'):
-        notes, merged_notes = _merge_overlap(notes, voices if mode == 'smart' else None)
+    if mode in ('no_drums', 'smart', 'custom'):
+        notes, merged_notes = _merge_overlap(notes, voices if mode in ('no_drums', 'smart') else None)
     if not notes:
         raise ValueError('The selected parts have no playable notes. Select another part.')
     shifted_notes = sum(id(note) in shifted for note in notes)
@@ -246,7 +223,7 @@ def render(data, settings):
     pedal_source = max(instruments, key=lambda instrument: len(instrument.notes))
     output.control_changes = [pretty.ControlChange(number=control.number, value=control.value, time=control.time)
                               for control in pedal_source.control_changes if control.number in (64, 66, 67)]
-    if mode in ('smart', 'custom'):
+    if mode in ('no_drums', 'smart', 'custom'):
         output.control_changes = _merge_pedals(pretty, instruments)
     # Retain the parsed score's tempo and signatures instead of building a new clock.
     music.instruments = [output]
@@ -259,11 +236,13 @@ def render(data, settings):
     selected_names = [parts[int(identity)]['name'] for identity in selected]
     removed_notes = total_notes - len(notes)
     notice = 'Retained notes keep their timing and original velocities. Pedals come from the selected part with the most notes.'
-    if mode in ('smart', 'custom'):
+    if mode == 'no_drums':
+        notice = 'Every part except the drum channel (10) plays on one piano track. Notes keep their timing and velocities; pedals are merged across parts.'
+    elif mode in ('smart', 'custom'):
         notice = 'Experimental rule-based adaptation. Retained attacks keep their timing and velocities. Pedals are merged across the selected parts; a pedal releases when all parts release it.'
     if merged_notes:
         notice += f' {merged_notes} overlapping copies of the same key were joined to prevent early note releases.'
-    if mode == 'smart':
+    if mode in ('no_drums', 'smart'):
         notice += ' Repeated attacks within a part are preserved with an 8 ms release gap inside overlapping holds. Mostly playable parts keep their original register; no polyphony cap is applied.'
     if outside:
         notice += f' {outside} notes outside the piano range were left out rather than moving the whole part.'

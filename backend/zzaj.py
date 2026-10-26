@@ -51,7 +51,7 @@ def search(query, page=1):
     found.sort(key=lambda item: (not token_match(required, item[1]['title']), item[1]['title'].casefold()))
     batch = [{'name': _name(song), 'url': url, 'piano_only': None} for url, song in found[(page - 1) * 12:page * 12]]
     return {'results': batch, 'has_more': page * 12 < len(found), 'total_matches': len(found),
-            'warnings': ['Backing tracks with bass and drums; drums are left out by default. Files are checked when saved.']}
+            'notes': ['Backing tracks with bass and drums; drums are left out by default. Files are checked when saved.']}
 
 
 def download(url):

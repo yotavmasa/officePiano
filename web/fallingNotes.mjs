@@ -47,7 +47,15 @@ export function visibleNotes(notes, now, ahead, longest = longestNote(notes)) {
 }
 
 // Extrapolates a polled position between updates while playing, without running past the song.
-export function songClock({ seconds = 0, playing = false, at = 0, duration = Infinity }, now) {
+export function songClock({ seconds = 0, playing = false, at = 0, rate = 1, duration = Infinity }, now) {
   if (!playing) return seconds;
-  return Math.min(duration, seconds + Math.max(0, now - at) / 1000);
+  return Math.min(duration, seconds + Math.max(0, now - at) / 1000 * rate);
+}
+
+// Polled positions arrive late and slightly off, so small differences are absorbed by briefly running the clock
+// up to 5% fast or slow instead of jumping; seeks, pauses, and larger differences still jump.
+export function syncClock(previous, { seconds = 0, playing = false }, now, tolerance = 0.75) {
+  const predicted = songClock(previous, now);
+  if (!playing || !previous.playing || Math.abs(seconds - predicted) > tolerance) return { seconds, playing, at: now, rate: 1 };
+  return { seconds: predicted, playing, at: now, rate: Math.min(1.05, Math.max(0.95, 1 + (seconds - predicted) / 2)) };
 }

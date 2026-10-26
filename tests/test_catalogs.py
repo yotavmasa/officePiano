@@ -91,6 +91,13 @@ class CatalogTests(unittest.TestCase):
                 with self.subTest(source=bad), self.assertRaises(ValueError):
                     discovery.search('test', source=bad)
 
+    def test_source_notes_are_separate_from_warnings(self):
+        noted = {'results': [], 'has_more': False, 'notes': ['Drums are left out by default.'], 'warnings': ['Some pages could not be read.']}
+        with patch.object(discovery.zzaj, 'search', return_value=noted), patch.object(discovery.bitmidi, 'search', side_effect=ValueError('Offline.')):
+            found = discovery.search('test', source='zzaj,bitmidi')
+        self.assertEqual((found['notes'], found['warnings']),
+                         ([{'source': 'zzaj', 'source_name': 'zzaj', 'text': 'Drums are left out by default.'}], ['BitMidi: Offline.', 'zzaj: Some pages could not be read.']))
+
 
 if __name__ == '__main__':
     unittest.main()

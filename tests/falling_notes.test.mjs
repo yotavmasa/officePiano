@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HIGHEST_PITCH, LOWEST_PITCH, isBlackKey, keyLayout, longestNote, songClock, visibleNotes } from '../web/fallingNotes.mjs';
+import { HIGHEST_PITCH, LOWEST_PITCH, isBlackKey, keyLayout, longestNote, songClock, syncClock, visibleNotes } from '../web/fallingNotes.mjs';
 
 test('keyLayout spans 88 keys across the full width with black keys between white keys', () => {
   const keys = keyLayout(520);
@@ -35,4 +35,20 @@ test('songClock extrapolates only while playing and stops at the song end', () =
   assert.equal(songClock({ seconds: 12, playing: true, at: 1000 }, 2500), 13.5);
   assert.equal(songClock({ seconds: 12, playing: true, at: 1000, duration: 13 }, 9000), 13);
   assert.equal(songClock({ seconds: 12, playing: true, at: 3000 }, 2000), 12);
+  assert.equal(songClock({ seconds: 12, playing: true, at: 1000, rate: 1.05 }, 3000), 14.1);
+});
+
+test('syncClock eases small polling differences and jumps for seeks and pauses', () => {
+  const running = { seconds: 10, playing: true, at: 0, rate: 1 };
+  for (const [reported, expected] of [
+    [{ seconds: 11.1, playing: true }, { seconds: 11, playing: true, at: 1000, rate: 1.05 }],
+    [{ seconds: 10.9, playing: true }, { seconds: 11, playing: true, at: 1000, rate: 0.95 }],
+    [{ seconds: 11.02, playing: true }, { seconds: 11, playing: true, at: 1000, rate: 1.01 }],
+    [{ seconds: 30, playing: true }, { seconds: 30, playing: true, at: 1000, rate: 1 }],
+    [{ seconds: 11.05, playing: false }, { seconds: 11.05, playing: false, at: 1000, rate: 1 }],
+  ]) {
+    const synced = syncClock(running, reported, 1000);
+    assert.deepEqual({ ...synced, rate: Math.round(synced.rate * 1000) / 1000 }, expected);
+  }
+  assert.deepEqual(syncClock({ seconds: 4, playing: false, at: 0, rate: 1 }, { seconds: 4.2, playing: true }, 1000), { seconds: 4.2, playing: true, at: 1000, rate: 1 });
 });

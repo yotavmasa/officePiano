@@ -217,7 +217,6 @@ class Catalog:
             candidates = [song for batch, _ in batches for song in batch]
             if any(error for _, error in batches):
                 warnings.append('Some composer pages could not be read; these results may be incomplete.')
-            warnings.append('Classical files are checked when saved. The site’s download limits may apply.')
         else:
             candidates = self.songs(self.page(self.base + self.index), self.base + self.index)
         required = [t for t in tokens if t not in STOPWORDS] or tokens
@@ -245,7 +244,8 @@ class Catalog:
                     return dict(song, reason=str(exc))
             with ThreadPoolExecutor(max_workers=4) as workers:
                 batch = list(workers.map(inspect, batch))
-        return {'results': batch, 'has_more': page * 12 < len(matches), 'total_matches': len(matches), 'warnings': warnings}
+        notes = ['Classical files are checked when saved. The site’s download limits may apply.'] if self.classical else []
+        return {'results': batch, 'has_more': page * 12 < len(matches), 'total_matches': len(matches), 'warnings': warnings, 'notes': notes}
 
     def download(self, url, name=None):
         p = self.allowed(url)
