@@ -74,7 +74,7 @@ class SoundTests(unittest.TestCase):
             return next(statuses) if request['action'] == 'status' else {'ok': True}
         self.calls.clear()
         with patch.object(server, 'midi', send), patch.object(server, 'QUEUE', queue):
-            result = server.change_expression({'enabled': True, 'expected_song_id': self.a['id']})
+            result = server.change_option({'enabled': True, 'expected_song_id': self.a['id']}, 'expressive')
         self.assertTrue(result['settings']['expressive'])
         self.assertTrue(server.ADAPTATION_REPORT['expressive'])
         self.assertNotEqual(self.loaded, plain)
@@ -89,15 +89,27 @@ class SoundTests(unittest.TestCase):
     def test_expression_toggle_never_starts_a_stopped_song_and_rejects_stale_requests(self):
         server.load_song(self.a['id'])
         self.calls.clear()
-        server.change_expression({'enabled': True, 'expected_song_id': self.a['id']})
+        server.change_option({'enabled': True, 'expected_song_id': self.a['id']}, 'expressive')
         self.assertEqual([call['action'] for call in self.calls], ['status', 'load'])
         with self.assertRaises(ValueError):
-            server.change_expression({'enabled': False, 'expected_song_id': 'earlier-song'})
+            server.change_option({'enabled': False, 'expected_song_id': 'earlier-song'}, 'expressive')
         with self.assertRaises(ValueError):
-            server.change_expression({'enabled': 'yes'})
+            server.change_option({'enabled': 'yes'}, 'expressive')
         self.assertTrue(server.sound_settings(self.a['id'])['expressive'])
-        server.change_expression({'enabled': False})
+        server.change_option({'enabled': False}, 'expressive')
         self.assertFalse(server.sound_settings(self.a['id'])['expressive'])
+
+    def test_soft_pedal_toggle_is_saved_separately_from_expressive(self):
+        server.load_song(self.a['id'])
+        result = server.change_option({'enabled': True, 'expected_song_id': self.a['id']}, 'soft_pedal')
+        self.assertTrue(result['settings']['soft_pedal'])
+        self.assertFalse(result['settings']['expressive'])
+        self.assertTrue(server.ADAPTATION_REPORT['soft_pedal'])
+        soft = [message.value for track in mido.MidiFile(file=io.BytesIO(self.loaded)).tracks for message in track if message.type == 'control_change' and message.control == 67]
+        self.assertEqual(soft[0], 127)
+        self.assertEqual(soft[-1], 0)
+        server.change_option({'enabled': False}, 'soft_pedal')
+        self.assertFalse(server.sound_settings(self.b['id'])['soft_pedal'])
 
     def test_custom_is_per_song_and_default_is_preserved(self):
         self.change(self.a['id'],'smart'); self.change(self.a['id'],'custom',['0'])

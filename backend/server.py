@@ -160,7 +160,8 @@ def sound_settings(song_id, config=None):
         saved = {'mode': 'custom', 'parts': saved}
     return {'mode': saved['mode'] if saved else config.get('mode', 'no_drums'),
             'parts': saved.get('parts', []) if saved else [], 'saved_for_song': bool(saved),
-            'default_mode': config.get('mode', 'no_drums'), 'expressive': config.get('expressive') is True}
+            'default_mode': config.get('mode', 'no_drums'), 'expressive': config.get('expressive') is True,
+            'soft_pedal': config.get('soft_pedal') is True}
 
 
 def load_prepared(song, data, report):
@@ -231,14 +232,17 @@ def change_sound(request):
     return sound_state()
 
 
-def change_expression(request):
+PLAYBACK_OPTIONS = {'expressive': 'Expressive playback', 'soft_pedal': 'Extra quiet'}
+
+
+def change_option(request, option):
     enabled = request.get('enabled')
     if type(enabled) is not bool:
-        raise ValueError('Choose whether to play expressively.')
+        raise ValueError(f'Choose whether to turn {PLAYBACK_OPTIONS[option]} on.')
     if request.get('expected_song_id', SONG_ID) != SONG_ID:
-        raise ValueError('The current song changed. Try the expressive toggle again.')
+        raise ValueError(f'The current song changed. Try the {PLAYBACK_OPTIONS[option]} toggle again.')
     config = sound_config()
-    config['expressive'] = enabled
+    config[option] = enabled
     if SONG_ID:
         original, song = LIBRARY.playable(SONG_ID)
         prepared, report = adaptation.render(original, sound_settings(SONG_ID, config))
@@ -424,7 +428,9 @@ class RequestHandler:
                         elif self.path == '/api/adaptation':
                             result = change_sound(request)
                         elif self.path == '/api/expression':
-                            result = change_expression(request)
+                            result = change_option(request, 'expressive')
+                        elif self.path == '/api/soft-pedal':
+                            result = change_option(request, 'soft_pedal')
                         elif self.path == '/api/select':
                             song = load_song(request.get('song_id'))
                             result = dict(ok=True, song=song)

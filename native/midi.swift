@@ -402,6 +402,8 @@ func panic() {
         for channel in 0..<16 {
             let packet = MIDIPacketListInit(ptr)
             var bytes: [UInt8] = [0xB0 | UInt8(channel), 64, 0,
+                                  0xB0 | UInt8(channel), 66, 0,
+                                  0xB0 | UInt8(channel), 67, 0,
                                   0xB0 | UInt8(channel), 120, 0,
                                   0xB0 | UInt8(channel), 123, 0]
             // Player pianos may ignore all-notes-off; release every key explicitly.

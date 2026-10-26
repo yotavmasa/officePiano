@@ -1863,6 +1863,7 @@ h2,
 .sound-button .experimental-badge { padding: 2px 5px; font-size: 10px; }
 .expressive-button.is-on, .expressive-button.is-on:hover:not(:disabled) { background: var(--white); color: var(--indigo); opacity: 1; }
 .expressive-button { flex-shrink: 0; }
+.player-tools .expressive-button { padding: 0 9px; }
 .expressive-button:disabled { opacity: .45; }
 .adaptation-report { margin: 0 0 14px; padding: 10px 12px; border-radius: 8px; background: var(--periwinkle-20); font-size: 12px; line-height: 1.55; color: var(--muted); overflow-wrap: anywhere; }
 @media (max-width: 740px) { .sound-button { flex-shrink: 0; padding: 0 9px; } .sound-button-label { display: none; } }
