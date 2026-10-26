@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { HIGHEST_PITCH, LOWEST_PITCH, isBlackKey, keyLayout, longestNote, visibleNotes } from './fallingNotes.mjs';
+import { HIGHEST_PITCH, LOWEST_PITCH, isBlackKey, keyLayout, longestNote, noteOpacity, visibleNotes } from './fallingNotes.mjs';
 
 const AHEAD_SECONDS = 3;
 const COLORS = { background: '#5151ca', guide: '#ffffff14', hit: '#55ffa2', white: '#c8c8f5', black: '#ff8dff', key: '#ffffff', keyEdge: '#c8c8f5', blackKey: '#13163b', lit: '#55ffa2' };
@@ -51,7 +51,7 @@ function draw(canvas, notes, longest, now, pressed = new Set()) {
       const y = Math.max(0, top);
       const barHeight = Math.min(roll, bottom) - y;
       if (barHeight <= 0) continue;
-      context.globalAlpha = 0.55 + 0.45 * (note.velocity / 127);
+      context.globalAlpha = noteOpacity(note.velocity);
       context.beginPath();
       context.roundRect(key.x + 1, y, Math.max(1, key.width - 2), Math.max(2, barHeight), Math.min(3, key.width / 3));
       context.fill();

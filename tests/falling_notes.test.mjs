@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { HIGHEST_PITCH, LOWEST_PITCH, isBlackKey, keyLayout, longestNote, songClock, syncClock, visibleNotes } from '../web/fallingNotes.mjs';
+import { HIGHEST_PITCH, LOWEST_PITCH, isBlackKey, keyLayout, longestNote, noteOpacity, songClock, syncClock, visibleNotes } from '../web/fallingNotes.mjs';
 
 test('keyLayout spans 88 keys across the full width with black keys between white keys', () => {
   const keys = keyLayout(520);
@@ -51,4 +51,12 @@ test('syncClock eases small polling differences and jumps for seeks and pauses',
     assert.deepEqual({ ...synced, rate: Math.round(synced.rate * 1000) / 1000 }, expected);
   }
   assert.deepEqual(syncClock({ seconds: 4, playing: false, at: 0, rate: 1 }, { seconds: 4.2, playing: true }, 1000), { seconds: 4.2, playing: true, at: 1000, rate: 1 });
+});
+
+test('noteOpacity maps velocity across a visible range', () => {
+  assert.equal(noteOpacity(127), 1);
+  assert.equal(noteOpacity(0), 0.2);
+  assert.ok(noteOpacity(40) < noteOpacity(80) && noteOpacity(80) < noteOpacity(120));
+  assert.equal(noteOpacity(200), 1);
+  assert.equal(noteOpacity(undefined), 0.2);
 });
