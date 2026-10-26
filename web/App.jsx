@@ -698,12 +698,12 @@ function App() {
   }
   async function playSong(song, { showPlayer = true } = {}) {
     if (!onDevice) return queueAction('play', { song_id: song.id }, '', showPlayer);
-    let index = queueIds.indexOf(song.id);
-    if (index < 0) {
-      // Match piano playback: a song from outside the queue joins its end so it shows as Now playing.
-      const result = await queueAction('add', { song_id: song.id });
+    let index = queueIds.length ? deviceIndex : -1;
+    if (index < 0 || queueIds[index] !== song.id) {
+      // Match piano playback: the song takes the Now playing slot and the rest of the queue stays.
+      const result = await queueAction('replace_current', index >= 0 ? { song_id: song.id, index, expected_song_ids: queueIds } : { song_id: song.id });
       if (!result) return;
-      index = result.queue.song_ids.length - 1;
+      if (index < 0) index = result.queue.index;
     }
     if (showPlayer) navigate('player');
     await listenHere(song, index);

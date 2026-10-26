@@ -80,6 +80,13 @@ class Playback:
         self._save()
         return result
 
+    def _place(self, song_id, position=None):
+        # A chosen song takes the Now playing slot; the songs queued after it stay as they are.
+        if not self.song_ids:
+            self.song_ids, self.index = [song_id], 0
+        else:
+            self.song_ids[self.index if position is None else self._position(position)] = song_id
+
     def control(self, action, request=None):
         request = request or {}
         if action == 'play':
@@ -90,16 +97,18 @@ class Playback:
                 song_id = self.current_song()
             if song_id:
                 self.library.playable(song_id)
-                if song_id in self.song_ids:
-                    index = self.song_ids.index(song_id)
-                else:
-                    if len(self.song_ids) >= self.MAX_QUEUE:
-                        raise ValueError('The queue can hold up to 500 songs.')
-                    # Check the device before appending a new song to the saved queue.
+                index = self.index
+                if not self.song_ids or self.song_ids[index] != song_id:
+                    # Check the device before changing the saved queue.
                     status = self._send({'action': 'status'})
                     self._device(status, request.get('device'))
-                    self.song_ids.append(song_id)
-                    index = len(self.song_ids) - 1
+                    previous = list(self.song_ids)
+                    self._place(song_id)
+                    try:
+                        return self._start(index, request.get('device'))
+                    except Exception:
+                        self.song_ids = previous
+                        raise
             else:
                 index = request.get('index', self.index)
             return self._start(index, request.get('device'))
@@ -131,6 +140,13 @@ class Playback:
                 if self.song_ids and position <= self.index:
                     self.index += 1
                 self.song_ids.insert(position, song_id)
+            self._save()
+        elif action == 'replace_current':
+            song_id = request.get('song_id')
+            self.library.playable(song_id)
+            if 'expected_song_ids' in request and request['expected_song_ids'] != self.song_ids:
+                raise ValueError('The queue changed. Try playing the song again.')
+            self._place(song_id, request.get('index'))
             self._save()
         elif action in ('next', 'previous'):
             target = self.index + (1 if action == 'next' else -1)
