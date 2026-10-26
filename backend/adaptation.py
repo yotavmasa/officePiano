@@ -1,9 +1,14 @@
 """Experimental, deterministic MIDI part selection; originals stay untouched."""
+from bisect import bisect_left
+import heapq
 import io
 from itertools import groupby
+import math
 from pathlib import Path
+import random
 import statistics
 import sys
+import zlib
 from .library import parse_midi
 
 VENDOR = Path(__file__).resolve().parent.parent / 'vendor'
@@ -165,6 +170,53 @@ def _merge_pedals(pretty, instruments):
     return output
 
 
+def _expressive(notes, music, seed):
+    """Rule-based dynamics: melody emphasis, metric accents, phrase arcs, duration weight and small jitter."""
+    if not notes:
+        return
+    # Skyline melody: the highest attack at an onset that is not under a higher held note.
+    order = sorted(range(len(notes)), key=lambda index: notes[index].start)
+    melody, active, position = set(), [], 0
+    while position < len(order):
+        onset, group = notes[order[position]].start, []
+        while position < len(order) and notes[order[position]].start - onset < .03:
+            group.append(order[position]); position += 1
+        while active and active[0][1] <= onset + .03:
+            heapq.heappop(active)
+        highest = max(notes[index].pitch for index in group)
+        if not active or highest >= -active[0][0]:
+            melody.update(index for index in group if notes[index].pitch == highest)
+        for index in group:
+            heapq.heappush(active, (-notes[index].pitch, notes[index].end))
+    line = sorted((notes[index].start, notes[index].pitch) for index in melody)
+    times = [start for start, _ in line]
+    sums = [0]
+    for _, pitch in line:
+        sums.append(sums[-1] + pitch)
+
+    def contour(moment, width):
+        low, high = bisect_left(times, moment - width), bisect_left(times, moment + width)
+        return (sums[high] - sums[low]) / (high - low) if high > low else None
+
+    beats, downbeats = list(music.get_beats()), list(music.get_downbeats())
+
+    def near(grid, moment, tolerance=.04):
+        index = bisect_left(grid, moment)
+        return any(0 <= candidate < len(grid) and abs(grid[candidate] - moment) <= tolerance for candidate in (index - 1, index))
+
+    typical = statistics.median(max(note.end - note.start, .01) for note in notes)
+    jitter = random.Random(seed)
+    for index, note in enumerate(notes):
+        shift = 8 if index in melody else -6
+        shift += 5 if near(downbeats, note.start) else 1 if near(beats, note.start) else -3
+        short, wide = contour(note.start, 1.5), contour(note.start, 6)
+        if short is not None and wide is not None:
+            shift += max(-8, min(8, .8 * (short - wide)))
+        shift += max(-4, min(5, 3 * math.log2(max(note.end - note.start, .01) / typical)))
+        shift += jitter.randint(-4, 4)
+        note.velocity = max(1, min(127, round(note.velocity + shift)))
+
+
 def render(data, settings):
     if not isinstance(settings, dict) or settings.get('mode') not in LABELS:
         raise ValueError('Choose a playback sound option.')
@@ -217,6 +269,9 @@ def render(data, settings):
         notes, merged_notes = _merge_overlap(notes, voices if mode in ('no_drums', 'smart') else None)
     if not notes:
         raise ValueError('The selected parts have no playable notes. Select another part.')
+    expressive = settings.get('expressive') is True
+    if expressive:
+        _expressive(notes, music, zlib.crc32(data))
     shifted_notes = sum(id(note) in shifted for note in notes)
     output = pretty.Instrument(program=0, is_drum=False, name='Adapted piano')
     output.notes = notes
@@ -235,19 +290,22 @@ def render(data, settings):
     duration = mido.MidiFile(file=io.BytesIO(rendered)).length
     selected_names = [parts[int(identity)]['name'] for identity in selected]
     removed_notes = total_notes - len(notes)
-    notice = 'Retained notes keep their timing and original velocities. Pedals come from the selected part with the most notes.'
+    kept = 'timing' if expressive else 'timing and original velocities'
+    notice = f'Retained notes keep their {kept}. Pedals come from the selected part with the most notes.'
     if mode == 'no_drums':
-        notice = 'Every part except the drum channel (10) plays on one piano track. Notes keep their timing and velocities; pedals are merged across parts.'
+        notice = f'Every part except the drum channel (10) plays on one piano track. Notes keep their {kept}; pedals are merged across parts.'
     elif mode in ('smart', 'custom'):
-        notice = 'Experimental rule-based adaptation. Retained attacks keep their timing and velocities. Pedals are merged across the selected parts; a pedal releases when all parts release it.'
+        notice = f'Experimental rule-based adaptation. Retained attacks keep their {kept}. Pedals are merged across the selected parts; a pedal releases when all parts release it.'
     if merged_notes:
         notice += f' {merged_notes} overlapping copies of the same key were joined to prevent early note releases.'
     if mode in ('no_drums', 'smart'):
         notice += ' Repeated attacks within a part are preserved with an 8 ms release gap inside overlapping holds. Mostly playable parts keep their original register; no polyphony cap is applied.'
+    if expressive:
+        notice += ' Expressive playback reshapes velocities by rule: louder melody, metric accents, phrase arcs following the melody, weight for longer notes and slight variation.'
     if outside:
         notice += f' {outside} notes outside the piano range were left out rather than moving the whole part.'
     if shifted_notes:
         notice += f' {shifted_notes} notes were shifted by octaves to fit the 88-key range.'
     return rendered, {'mode': mode, 'label': LABELS[mode], 'selected_parts': selected,
                       'selected_names': selected_names, 'removed_notes': removed_notes,
-                      'shifted_notes': shifted_notes, 'merged_notes': merged_notes, 'out_of_range_notes': outside, 'notice': notice, 'duration_seconds': duration, 'original': False}
+                      'shifted_notes': shifted_notes, 'merged_notes': merged_notes, 'out_of_range_notes': outside, 'notice': notice, 'duration_seconds': duration, 'original': False, 'expressive': expressive}

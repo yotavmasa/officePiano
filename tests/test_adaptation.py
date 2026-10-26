@@ -53,6 +53,39 @@ def note_values(music):
 
 
 class AdaptationTests(unittest.TestCase):
+    def test_expressive_reshapes_velocities_only_and_emphasises_melody(self):
+        melody = [(72 + step % 5, step * 240, step * 240 + 220, 80) for step in range(16)]
+        chords = [(pitch, beat * 480, beat * 480 + 460, 80) for beat in range(8) for pitch in (48, 52, 55)]
+        data = fixture([(0, 0, 'Right', melody, False), (1, 0, 'Left', chords, False)])
+        plain, plain_report = adaptation.render(data, {'mode': 'no_drums'})
+        shaped, report = adaptation.render(data, {'mode': 'no_drums', 'expressive': True})
+        before, after = note_values(parsed(plain)), note_values(parsed(shaped))
+        self.assertEqual([note[:3] for note in before], [note[:3] for note in after])
+        self.assertTrue(all(note[3] == 80 for note in before))
+        self.assertFalse(plain_report['expressive'])
+        self.assertTrue(report['expressive'])
+        self.assertIn('Expressive playback', report['notice'])
+        high = [note[3] for note in after if note[0] >= 72]
+        low = [note[3] for note in after if note[0] < 72]
+        self.assertGreater(sum(high) / len(high), sum(low) / len(low) + 8)
+        self.assertGreater(len({note[3] for note in after}), 3)
+        self.assertTrue(all(1 <= note[3] <= 127 for note in after))
+        self.assertEqual(shaped, adaptation.render(data, {'mode': 'no_drums', 'expressive': True})[0])
+
+    def test_expressive_accents_downbeats_and_leaves_original_unchanged(self):
+        steady = [(60, step * 240, step * 240 + 200, 64) for step in range(32)]
+        data = fixture([(0, 0, 'Piano', steady, False)])
+        shaped, _ = adaptation.render(data, {'mode': 'custom', 'parts': ['0'], 'expressive': True})
+        music = parsed(shaped)
+        downbeats = list(music.get_downbeats())
+        notes = music.instruments[0].notes
+        on = [note.velocity for note in notes if any(abs(note.start - beat) < .01 for beat in downbeats)]
+        off = [note.velocity for note in notes if all(abs(note.start - beat) > .01 for beat in music.get_beats())]
+        self.assertGreater(sum(on) / len(on), sum(off) / len(off) + 4)
+        original, report = adaptation.render(data, {'mode': 'original', 'expressive': True})
+        self.assertEqual(original, data)
+        self.assertTrue(report['original'])
+
     def test_smart_joins_overlapping_keys_but_keeps_separate_repeated_attacks(self):
         first = (0, 0, 'Left', [(60, 0, 480, 50), (60, 960, 1200, 40)], False)
         second = (1, 0, 'Right', [(60, 240, 960, 70), (64, 0, 480, 44)], False)

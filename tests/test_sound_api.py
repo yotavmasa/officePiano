@@ -63,6 +63,42 @@ class SoundTests(unittest.TestCase):
         self.assertEqual([message.note for message in notes],[65]); self.assertTrue(all(message.channel!=9 for message in notes))
         self.assertEqual(self.library.select(self.a['id'])[0],original)
         self.assertEqual(server.SONG_ID,self.a['id'])
+    def test_expression_toggle_saves_globally_and_resumes_playing_song(self):
+        server.load_song(self.a['id'])
+        plain = self.loaded
+        queue = type('Queue', (), {'running': True, 'error': '', 'device_id': 7})()
+        statuses = iter([{'ok': True, 'playing': True, 'paused': False, 'seconds': 12.5}])
+        def send(request):
+            self.calls.append(request)
+            if request['action'] == 'load': self.loaded = Path(request['path']).read_bytes()
+            return next(statuses) if request['action'] == 'status' else {'ok': True}
+        self.calls.clear()
+        with patch.object(server, 'midi', send), patch.object(server, 'QUEUE', queue):
+            result = server.change_expression({'enabled': True, 'expected_song_id': self.a['id']})
+        self.assertTrue(result['settings']['expressive'])
+        self.assertTrue(server.ADAPTATION_REPORT['expressive'])
+        self.assertNotEqual(self.loaded, plain)
+        self.assertEqual([call['action'] for call in self.calls], ['status', 'load', 'seek', 'play'])
+        self.assertEqual(self.calls[2]['seconds'], 12.5)
+        self.assertEqual(self.calls[3]['device'], 7)
+        self.assertTrue(queue.running)
+        self.assertTrue(server.sound_settings(self.b['id'])['expressive'])
+        server.load_song(self.b['id'])
+        self.assertTrue(server.ADAPTATION_REPORT['expressive'])
+
+    def test_expression_toggle_never_starts_a_stopped_song_and_rejects_stale_requests(self):
+        server.load_song(self.a['id'])
+        self.calls.clear()
+        server.change_expression({'enabled': True, 'expected_song_id': self.a['id']})
+        self.assertEqual([call['action'] for call in self.calls], ['status', 'load'])
+        with self.assertRaises(ValueError):
+            server.change_expression({'enabled': False, 'expected_song_id': 'earlier-song'})
+        with self.assertRaises(ValueError):
+            server.change_expression({'enabled': 'yes'})
+        self.assertTrue(server.sound_settings(self.a['id'])['expressive'])
+        server.change_expression({'enabled': False})
+        self.assertFalse(server.sound_settings(self.a['id'])['expressive'])
+
     def test_custom_is_per_song_and_default_is_preserved(self):
         self.change(self.a['id'],'smart'); self.change(self.a['id'],'custom',['0'])
         self.assertEqual(server.sound_settings(self.a['id'])['mode'],'custom')
