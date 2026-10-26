@@ -102,8 +102,24 @@ export function useLocalListener(loadSong, onEnd) {
   const now = useCallback(() => engine.current?.position ?? 0, []);
   // Drops the loaded song so the next listen fetches its current playback sound.
   const forget = useCallback(() => { loaded.current = { id: '', parsed: null }; }, []);
+  // Swaps in the song's current playback sound at the same place, keeping play or pause.
+  const reload = useCallback(async () => {
+    const player = engine.current, id = loaded.current.id;
+    if (!player || !id) return forget();
+    const ticket = ++request.current;
+    const parsed = await loadSong(id);
+    if (ticket !== request.current) return;
+    const previous = player.state, at = player.position;
+    player.load(parsed);
+    loaded.current = { id, parsed };
+    if (previous !== 'stopped') player.seek(at);
+    if (previous === 'playing') player.play();
+    setDuration(parsed.duration);
+    setPosition(player.position);
+    setState(previous);
+  }, [loadSong, forget]);
   const press = useCallback((pitch, velocity) => piano().press(pitch, velocity), [piano]);
   const release = useCallback(pitch => engine.current?.release(pitch), []);
 
-  return { state, song, position, duration, loading, volume, listen, pause, resume, stop, seek, setVolume, now, press, release, forget };
+  return { state, song, position, duration, loading, volume, listen, pause, resume, stop, seek, setVolume, now, press, release, forget, reload };
 }

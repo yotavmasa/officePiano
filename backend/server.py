@@ -160,7 +160,7 @@ def sound_settings(song_id, config=None):
         saved = {'mode': 'custom', 'parts': saved}
     return {'mode': saved['mode'] if saved else config.get('mode', 'no_drums'),
             'parts': saved.get('parts', []) if saved else [], 'saved_for_song': bool(saved),
-            'default_mode': config.get('mode', 'no_drums')}
+            'default_mode': config.get('mode', 'no_drums'), 'expressive': config.get('expressive') is True}
 
 
 def load_prepared(song, data, report):
@@ -227,6 +227,31 @@ def change_sound(request):
         prepared, report = adaptation.render(original, sound_settings(song_id, config))
         if apply_now:
             load_prepared(song, prepared, report)
+    LIBRARY.set_setting('adaptation', config)
+    return sound_state()
+
+
+def change_expression(request):
+    enabled = request.get('enabled')
+    if type(enabled) is not bool:
+        raise ValueError('Choose whether to play expressively.')
+    if request.get('expected_song_id', SONG_ID) != SONG_ID:
+        raise ValueError('The current song changed. Try the expressive toggle again.')
+    config = sound_config()
+    config['expressive'] = enabled
+    if SONG_ID:
+        original, song = LIBRARY.playable(SONG_ID)
+        prepared, report = adaptation.render(original, sound_settings(SONG_ID, config))
+        before = midi({'action': 'status'})
+        running = bool(QUEUE and QUEUE.running)
+        load_prepared(song, prepared, report)
+        # Keep the listener's place: the reloaded copy resumes only if it was already playing.
+        seconds = before.get('seconds') or 0
+        if before.get('playing') or before.get('paused') and seconds > 0:
+            midi({'action': 'seek', 'seconds': float(seconds)})
+        if before.get('playing') and QUEUE and QUEUE.device_id is not None:
+            if midi({'action': 'play', 'device': QUEUE.device_id}).get('ok'):
+                QUEUE.running = running
     LIBRARY.set_setting('adaptation', config)
     return sound_state()
 
@@ -398,6 +423,8 @@ class RequestHandler:
                                 LIBRARY.set_setting('preferred_device', name.strip())
                         elif self.path == '/api/adaptation':
                             result = change_sound(request)
+                        elif self.path == '/api/expression':
+                            result = change_expression(request)
                         elif self.path == '/api/select':
                             song = load_song(request.get('song_id'))
                             result = dict(ok=True, song=song)

@@ -126,6 +126,7 @@ function Icon({ name, style }) {
     link: <><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></>,
     devices: <><rect x="3" y="3" width="11" height="18" rx="2" /><circle cx="8.5" cy="14" r="3" /><path d="M8.5 7h.01M17 7h3a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-3" /></>,
     laptop: <path d="M5 5h14a1 1 0 0 1 1 1v10H4V6a1 1 0 0 1 1-1ZM2 19h20" />,
+    expressive: <path d="M3 18c3 0 4-12 7-12s3 9 5 9 2-5 6-5" />,
     phone: <><rect x="7" y="3" width="10" height="18" rx="2" /><path d="M11 17h2" /></>,
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" style={style}>{paths[name] || paths.note}</svg>;
@@ -669,6 +670,22 @@ function App() {
   }
   const playerPause = () => onDevice ? local.pause() : control('pause');
   const playerStop = () => onDevice ? local.stop() : control('stop');
+  const spaceToggle = useRef(null);
+  spaceToggle.current = () => {
+    if (isPlaying) { if (onDevice || !busy) playerPause(); }
+    else if (canPlay) playerPlay();
+  };
+  useEffect(() => {
+    // Space toggles playback unless a field, control or dialog should receive it.
+    const keyDown = event => {
+      if (event.code !== 'Space' || event.repeat || event.metaKey || event.ctrlKey || event.altKey || event.defaultPrevented) return;
+      if (event.target.closest?.('input, textarea, select, button, a, [contenteditable], [role="button"], [role="slider"], [role="menu"], [role="dialog"], dialog')) return;
+      event.preventDefault();
+      spaceToggle.current();
+    };
+    document.addEventListener('keydown', keyDown);
+    return () => document.removeEventListener('keydown', keyDown);
+  }, []);
   function playerSkip(step) {
     if (!onDevice) return queueAction(step > 0 ? 'next' : 'previous');
     const target = deviceIndex + step;
@@ -1010,6 +1027,16 @@ function App() {
     }
   }
 
+  async function toggleExpressive() {
+    const enabled = !soundSettings.expressive;
+    const result = await run(() => post('/api/expression', { enabled, expected_song_id: status?.song_id || '' }));
+    if (!result) return;
+    parsedSongs.current.clear();
+    setSoundVersion(version => version + 1);
+    // This device plays its own rendered copy; swap it in at the same place.
+    try { await local.reload(); } catch (error) { local.stop(); announce(error.message); }
+  }
+
   async function saveVolume(value) {
     try {
       await post('/api/control', { action: 'volume', value, device: Number(device?.id || 0) });
@@ -1325,6 +1352,9 @@ function App() {
     if (animate) withViewTransition(() => setQueueDocked(visible)); else setQueueDocked(visible);
   }
   // The full and mini players share one queue toggle, so the panel stays open or closed across pages.
+  const expressiveClass = `expressive-button ${soundSettings.expressive ? 'is-on' : ''}`;
+  const expressiveToggle = { type: 'button', onClick: toggleExpressive, disabled: busy || soundSettings.mode === 'original', 'aria-pressed': !!soundSettings.expressive, 'aria-label': 'Expressive playback',
+    title: soundSettings.mode === 'original' ? 'Original MIDI plays unchanged. Choose another playback sound to use expressive dynamics.' : 'Expressive dynamics: louder melody, metric accents, phrase arcs, longer notes weighted, slight variation' };
   const queueButton = <button type="button" ref={queueTrigger} className="device-picker-button mini-player-queue" aria-label={`${queueVisible ? 'Hide' : 'Show'} queue, ${queueShown} ${queueShown === 1 ? 'song' : 'songs'}`} title={queueVisible ? 'Hide queue' : 'Show queue'} aria-expanded={queueVisible} aria-controls="queue-panel" onClick={() => setQueueVisible(!queueVisible)} onDragEnter={event => { if (carriesSong(event)) setQueueVisible(true, { animate: false }); }}><Icon name="queue" />{queueShown > 0 && <span className="queue-count" aria-hidden="true">{queueShown}</span>}</button>;
   // Only one player is shown at a time, so both can render the same volume control.
   const volumeControl = onDevice
@@ -1367,7 +1397,7 @@ function App() {
       {view === 'player' && <section aria-label="Player" className={notesFit ? 'player-fit' : undefined}>
         <section className="player" aria-label="Piano player"><div className="art-column"><div className={`art ${showArtwork ? 'has-cover' : ''}`} aria-hidden="true">{canLoadArtwork && <img className={`album-cover ${showArtwork ? 'is-ready' : ''}`} src={artworkUrl} alt="" onLoad={() => setLoadedArtwork(artworkUrl)} onError={() => setFailedArtwork(artworkUrl)} />}{!showArtwork && <div className="keys">{[true, true, false, true, true, true, false].map((black, index) => <i className={black ? 'black' : ''} key={index} />)}</div>}</div>{spotifyLink && <a className="spotify-cover-link" href={spotifyLink} target="_blank" rel="noopener noreferrer" aria-label="Find this album on Spotify" title="Find this album on Spotify"><span><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="12" fill="#1ed760" stroke="none"/><path d="M5 8c5-1.7 10-1.2 14 1M6 12c4-1.3 8-1 12 1M7 16c3-.8 6-.5 9 1" fill="none" stroke="#121d16" strokeWidth="1.7" strokeLinecap="round"/></svg>Spotify ↗</span></a>}</div><div className="player-content"><div className="eyebrow"><span className="playing-pulse" /><span>{onDevice && local.loading ? 'Loading…' : isPlaying ? 'Now playing' : isPaused ? 'Paused' : 'Ready when you are'}</span></div><h2 className="song-title">{playerName ? songTitle(playerName) : 'Waiting for a song'}</h2><p className="player-record">{[playerSong?.artist, playerSong?.album].filter(Boolean).join(' · ') || '\u00a0'}</p><p className="song-meta">{playerName ? [playerSong?.piano_only === true ? 'Piano only' : 'Other MIDI', playerSong?.source_url ? providerName(playerSong.source_url) : playerSong?.source_kind === 'sheet' ? 'Sheet music' : ''].filter(Boolean).join(' · ') : '\u00a0'}</p><div className="progress-row"><span>{time(playerElapsed)}</span><input className="song-timeline" type="range" min="0" max={playerDuration || 1} step="0.1" value={Math.min(playerDuration || 1, playerElapsed)} aria-label="Song timeline" aria-valuetext={`${time(playerElapsed)} of ${time(playerDuration)}`} disabled={!canSeek} onChange={event => previewSeek(Number(event.target.value))} onPointerUp={event => seekTo(event.currentTarget.value)} onKeyUp={event => { if (SEEK_KEYS.includes(event.key)) seekTo(event.currentTarget.value); }} onBlur={event => seekTo(event.currentTarget.value)} /><span>{time(playerDuration)}</span></div>
           <div className="player-bottom"><div className="controls"><button className="icon-button" aria-label="Previous song" title="Previous song" disabled={!canPrevious} onClick={() => playerSkip(-1)}><Icon name="previous" /></button><button className="play-button" aria-label={isPaused ? 'Resume' : 'Play'} title={isPaused ? 'Resume' : 'Play'} disabled={!canPlay || isPlaying} onClick={playerPlay}>{onDevice && local.loading ? <span className="spinner" /> : <Icon name="play" />}</button><button className="icon-button" aria-label="Pause" title="Pause" disabled={onDevice ? !isPlaying : busy || !playing} onClick={playerPause}><Icon name="pause" /></button><button className="icon-button" aria-label="Next song" title="Next song" disabled={!canNext} onClick={() => playerSkip(1)}><Icon name="next" /></button><button className="icon-button" aria-label={onDevice ? 'Stop' : 'Stop and release keys'} title={onDevice ? 'Stop' : 'Stop & release keys'} onClick={playerStop} disabled={onDevice ? local.state === 'stopped' && !local.loading : busy}><Icon name="stop" /></button></div>
-            <div className="player-tools"><button type="button" className="sound-button" onClick={openAdaptation} disabled={busy} aria-label={`Playback sound: ${soundName}. Change playback sound`} title="Change playback sound"><Icon name="piano" /><span className="sound-button-label">{soundName}</span>{soundSettings.mode === 'smart' && <span className="experimental-badge">Experimental</span>}</button>{queueButton}<DevicePicker {...pickerProps} />{volumeControl}</div>
+            <div className="player-tools"><button type="button" className="sound-button" onClick={openAdaptation} disabled={busy} aria-label={`Playback sound: ${soundName}. Change playback sound`} title="Change playback sound"><Icon name="piano" /><span className="sound-button-label">{soundName}</span>{soundSettings.mode === 'smart' && <span className="experimental-badge">Experimental</span>}</button><button type="button" className={`sound-button ${expressiveClass}`} {...expressiveToggle}><Icon name="expressive" /><span className="sound-button-label">Expressive</span></button>{queueButton}<DevicePicker {...pickerProps} />{volumeControl}</div>
           </div>
           <p className={`playing-on ${onDevice ? 'is-local' : ''}`}><Icon name={currentEntry.icon} />Playing on {currentEntry.name}{onDevice && ' · The piano stays silent'}</p></div></section>
         <section className={`notes-panel ${showNotes ? 'is-open' : ''}`} aria-labelledby="notes-heading">
@@ -1430,6 +1460,7 @@ function App() {
       </div>
       <div className="mini-player-actions">
         <button type="button" className="device-picker-button mini-player-sound" onClick={() => openAdaptation(undefined, { applyNow: true })} disabled={busy} aria-label={`Playback sound: ${soundName}. Change playback sound`} title={`Playback sound: ${soundName}`}><Icon name="piano" /></button>
+        <button className={`device-picker-button ${expressiveClass}`} {...expressiveToggle}><Icon name="expressive" /></button>
         {queueButton}
         <DevicePicker {...pickerProps} />
         <div className="mini-player-volume">{volumeControl}</div>
