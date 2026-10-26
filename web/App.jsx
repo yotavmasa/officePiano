@@ -13,7 +13,7 @@ import { groupSheetSongs } from './sheetGroups.mjs';
 import SheetBookDialog, { analysisProgressText } from './SheetBookDialog.jsx';
 import { useLocalListener } from './useLocalListener.mjs';
 import { parseMidi } from './localPiano.mjs';
-import { songClock } from './fallingNotes.mjs';
+import { songClock, syncClock } from './fallingNotes.mjs';
 import FallingNotes from './FallingNotes.jsx';
 
 const storage = {
@@ -237,8 +237,11 @@ function EmptyState({ icon = 'note', title, description, button, onClick }) {
   return <div className="empty"><Icon name={icon} /><h3>{title}</h3><p>{description}</p>{button && <button className="btn light" onClick={onClick}>{button}</button>}</div>;
 }
 
+const NEW_PLAYLIST = '__new_playlist__';
+
 function SearchResult({ result, libraries, busy, onSave, notice }) {
   const [destination, setDestination] = useState('');
+  const [newPlaylist, setNewPlaylist] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [open, setOpen] = useState(false);
@@ -253,7 +256,7 @@ function SearchResult({ result, libraries, busy, onSave, notice }) {
     if (busy || saving) return;
     setAttempted(true);
     setSaving(true);
-    const success = await onSave(result, destination);
+    const success = await onSave(result, destination === NEW_PLAYLIST ? { newPlaylist: newPlaylist.trim() } : { libraryId: destination });
     setSaving(false);
     if (success) {
       setSaved(true);
@@ -284,12 +287,14 @@ function SearchResult({ result, libraries, busy, onSave, notice }) {
         <select id={destinationId} className="field" value={destination} disabled={saving} onChange={event => setDestination(event.target.value)}>
           <option value="">All songs</option>
           {libraries.map(library => <option key={library.id} value={library.id}>{library.name}</option>)}
+          <option value={NEW_PLAYLIST}>New playlist…</option>
         </select>
-        <p className="dialog-hint">Saved locally and available in your Player.</p>
+        {destination === NEW_PLAYLIST && <><label className="dialog-label" htmlFor={`${destinationId}-name`}>Playlist name</label><input id={`${destinationId}-name`} className="field" required maxLength="80" placeholder="Quiet mornings" value={newPlaylist} disabled={saving} autoFocus onChange={event => setNewPlaylist(event.target.value)} /></>}
+        <p className="dialog-hint">Next, you can add the artist, album, and cover.</p>
         {attempted && notice && !notice.success && <p className="message visible" role="alert">{notice.text}</p>}
         <div className="dialog-actions">
           <button type="button" className="btn light" disabled={saving} onClick={() => setOpen(false)}>Cancel</button>
-          <button className="btn" disabled={busy || saving}>{saving ? <><span className="spinner" /> Saving</> : 'Save song'}</button>
+          <button className="btn" disabled={busy || saving || destination === NEW_PLAYLIST && !newPlaylist.trim()}>{saving ? <><span className="spinner" /> Saving</> : 'Save song'}</button>
         </div>
       </form>
     </Dialog>}
@@ -340,7 +345,7 @@ function App() {
     return list.length ? list : SOURCE_IDS;
   });
   const searchSource = searchSources.length === SOURCE_IDS.length ? 'all' : searchSources.join(',');
-  const [searchData, setSearchData] = useState({ results: [], page: 0, query: '', hasMore: false, checked: 0, searched: false, source: searchSource, warnings: [] });
+  const [searchData, setSearchData] = useState({ results: [], page: 0, query: '', hasMore: false, checked: 0, searched: false, source: searchSource, warnings: [], notes: [] });
   const [searching, setSearching] = useState(false);
   const [copied, setCopied] = useState(false);
   const [connectionError, setConnectionError] = useState(false);
@@ -419,7 +424,7 @@ function App() {
   }, [fetchSongFile, soundVersion]);
   const local = useLocalListener(loadSongNotes, () => advanceLocal.current?.());
   const [showNotes, setShowNotes] = useState(() => storage.get('piano-falling-notes') === 'on');
-  const pianoClock = useRef({ seconds: 0, playing: false, at: 0 });
+  const pianoClock = useRef({ seconds: 0, playing: false, at: 0, rate: 1, songId: '' });
   const [queueOpen, setQueueOpen] = useState(false);
   const [queueDocked, setQueueDocked] = useState(() => storage.get('piano-queue-panel') !== 'hidden');
   const [wideQueue, setWideQueue] = useState(() => window.matchMedia(WIDE_QUEUE).matches);
@@ -450,6 +455,7 @@ function App() {
   async function listenHere(song, index = null, startAt = 0) {
     announce('');
     setLocalIndex(index);
+    if (index !== null && status?.queue?.song_ids?.[index] === song.id) post('/api/queue', { action: 'select', index }).then(refresh, () => {});
     try { await local.listen(song, startAt); }
     catch (error) { announce(error.message || 'This song could not play on this device.'); }
   }
@@ -592,9 +598,18 @@ function App() {
   const isPlaying = onDevice ? local.state === 'playing' : playing;
   const isPaused = onDevice ? local.state === 'paused' : !!status?.paused;
   const songAt = index => library.songs.find(song => song.id === queueIds[index]);
-  advanceLocal.current = () => {
-    const next = deviceIndex + 1;
-    if (onDevice && deviceIndex >= 0 && songAt(next)) listenHere(songAt(next), next);
+  advanceLocal.current = async () => {
+    if (!onDevice || deviceIndex < 0 || !songAt(deviceIndex)) return;
+    const finished = deviceIndex;
+    const next = songAt(finished + 1);
+    try {
+      await post('/api/queue', { action: 'finish', index: finished, song_id: queueIds[finished] });
+    } catch (error) {
+      announce(error.message);
+      return;
+    }
+    if (next) await listenHere(next, finished);
+    refresh();
   };
   const artworkMatches = !onDevice || playerSongId === status?.song_id;
   const savedCover = typeof playerSong?.recognition?.artwork === 'string' ? playerSong.recognition.artwork : '';
@@ -620,7 +635,10 @@ function App() {
   const canNext = onDevice ? !local.loading && deviceIndex >= 0 && deviceIndex < queueIds.length - 1 : !busy && !!queueIds.length && queueIndex < queueIds.length - 1;
   const previewSeek = seconds => setSeekPreview({ output, songId: playerSongId, seconds });
   useEffect(() => {
-    pianoClock.current = { seconds: status?.seconds || 0, playing: !!status?.playing && !status?.paused, at: performance.now() };
+    const previous = pianoClock.current;
+    const reported = { seconds: status?.seconds || 0, playing: !!status?.playing && !status?.paused };
+    const synced = previous.songId === status?.song_id ? syncClock(previous, reported, performance.now()) : { ...reported, at: performance.now(), rate: 1 };
+    pianoClock.current = { ...synced, songId: status?.song_id };
   }, [status]);
   const notesPlaying = isPlaying && !(seekPreview && seekPreview.output === output);
   const notesTime = () => {
@@ -896,7 +914,7 @@ function App() {
       const page = more ? searchData.page + 1 : 1;
       const data = await api(`/api/search?q=${encodeURIComponent(text)}&page=${page}&source=${encodeURIComponent(source)}`, { signal: controller.signal });
       if (generation !== searchGeneration.current) return;
-      setSearchData(previous => ({ results: more ? previous.results.concat(data.results || []) : data.results || [], page, query: text, hasMore: !!data.has_more, checked: data.checked || 0, totalMatches: data.total_matches, searched: true, source, warnings: Array.isArray(data.warnings) ? data.warnings : [] }));
+      setSearchData(previous => ({ results: more ? previous.results.concat(data.results || []) : data.results || [], page, query: text, hasMore: !!data.has_more, checked: data.checked || 0, totalMatches: data.total_matches, searched: true, source, warnings: Array.isArray(data.warnings) ? data.warnings : [], notes: Array.isArray(data.notes) ? data.notes : [] }));
     } catch (error) {
       if (error.name !== 'AbortError' && generation === searchGeneration.current) announce(error.message);
     } finally { if (generation === searchGeneration.current) setSearching(false); }
@@ -911,20 +929,30 @@ function App() {
     setSearchSources(next);
     storage.set('piano-search-sources', next.join(','));
     const source = next.length === SOURCE_IDS.length ? 'all' : next.join(',');
-    setSearchData({ results: [], page: 0, query: '', hasMore: false, checked: 0, searched: false, source, warnings: [] });
+    setSearchData({ results: [], page: 0, query: '', hasMore: false, checked: 0, searched: false, source, warnings: [], notes: [] });
   }
 
-  async function saveResult(result, libraryId) {
-    const destination = library.libraries.find(item => item.id === libraryId);
-    return run(async () => {
+  async function saveResult(result, { libraryId = '', newPlaylist = '' }) {
+    const existing = library.libraries.find(item => item.id === libraryId);
+    const saved = await run(async () => {
       const imported = await post('/api/import', { url: result.url });
       acceptLibrary(imported.library);
-      if (libraryId) {
-        const assigned = await post('/api/library', { action: 'assign', song_id: imported.song.id, library_id: libraryId, value: true });
+      let targetId = existing?.id || '';
+      if (newPlaylist) {
+        const created = await post('/api/library', { action: 'create', name: newPlaylist });
+        acceptLibrary(created.library);
+        targetId = created.library?.libraries?.find(item => item.name === newPlaylist)?.id || '';
+        if (!targetId) throw Error('The new playlist could not be found.');
+      }
+      if (targetId) {
+        const assigned = await post('/api/library', { action: 'assign', song_id: imported.song.id, library_id: targetId, value: true });
         imported.library = assigned.library;
       }
       return imported;
-    }, destination ? `Saved to ${destination.name}.` : 'Saved to All songs.');
+    }, newPlaylist ? `Saved to ${newPlaylist}.` : existing ? `Saved to ${existing.name}.` : 'Saved to All songs.');
+    const song = saved?.library?.songs?.find(item => item.id === saved.song?.id);
+    if (song) startEditDetails([song]);
+    return !!saved;
   }
 
   async function openAdaptation(requestedSongId, { applyNow = view === 'player' } = {}) {
@@ -1203,6 +1231,7 @@ function App() {
   const queueSections = [
     { key: 'next', title: 'Next in queue', start: hasCurrent ? activeIndex + 1 : 0, end: queueIds.length },
   ].filter(section => section.end > section.start);
+  const queueShown = (hasCurrent ? 1 : 0) + queueSections.reduce((total, section) => total + queueIds.slice(section.start, section.end).filter((_, offset) => songAt(section.start + offset)).length, 0);
   const queueRow = (index, section = null, rowProps = {}) => {
     const song = songAt(index);
     const isCurrent = !section;
@@ -1296,7 +1325,7 @@ function App() {
     if (animate) withViewTransition(() => setQueueDocked(visible)); else setQueueDocked(visible);
   }
   // The full and mini players share one queue toggle, so the panel stays open or closed across pages.
-  const queueButton = <button type="button" ref={queueTrigger} className="device-picker-button mini-player-queue" aria-label={`${queueVisible ? 'Hide' : 'Show'} queue, ${queueIds.length} ${queueIds.length === 1 ? 'song' : 'songs'}`} title={queueVisible ? 'Hide queue' : 'Show queue'} aria-expanded={queueVisible} aria-controls="queue-panel" onClick={() => setQueueVisible(!queueVisible)} onDragEnter={event => { if (carriesSong(event)) setQueueVisible(true, { animate: false }); }}><Icon name="queue" />{queueIds.length > 0 && <span className="queue-count" aria-hidden="true">{queueIds.length}</span>}</button>;
+  const queueButton = <button type="button" ref={queueTrigger} className="device-picker-button mini-player-queue" aria-label={`${queueVisible ? 'Hide' : 'Show'} queue, ${queueShown} ${queueShown === 1 ? 'song' : 'songs'}`} title={queueVisible ? 'Hide queue' : 'Show queue'} aria-expanded={queueVisible} aria-controls="queue-panel" onClick={() => setQueueVisible(!queueVisible)} onDragEnter={event => { if (carriesSong(event)) setQueueVisible(true, { animate: false }); }}><Icon name="queue" />{queueShown > 0 && <span className="queue-count" aria-hidden="true">{queueShown}</span>}</button>;
   // Only one player is shown at a time, so both can render the same volume control.
   const volumeControl = onDevice
               ? <div className="volume-wrap"><label htmlFor="volume" aria-label="Volume on this device"><Icon name="volume" /></label><input id="volume" type="range" min="0" max="100" value={local.volume} aria-label="Volume on this device" onChange={event => local.setVolume(Number(event.target.value))} /><output htmlFor="volume">{local.volume}%</output></div>
@@ -1320,7 +1349,7 @@ function App() {
     <aside className="sidebar">
       <div className="brand">{logoMissing ? <><span className="brand-mark"><Icon name="piano" /></span>Office Piano</> : <div><img className="brand-logo" src="/assets/brand/cymphony-logo-full-purple.svg" alt="Cymphony" onError={() => setLogoMissing(true)} /><span className="brand-name">Office Piano</span></div>}</div>
       <nav className="nav" aria-label="Music">
-        {[['player', 'Player', 'play', queueIds.length], ['all', 'All songs', 'grid', library.songs.filter(song => song.source_kind !== 'sheet').length], ['favorites', 'Favorites', 'heart', library.songs.filter(song => song.favorite).length], ['discover', 'Discover', 'search']].map(([id, label, icon, count]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{label}{count !== undefined && <span className="count">{count}</span>}</button>)}
+        {[['player', 'Player', 'play', queueShown], ['all', 'All songs', 'grid', library.songs.filter(song => song.source_kind !== 'sheet').length], ['favorites', 'Favorites', 'heart', library.songs.filter(song => song.favorite).length], ['discover', 'Discover', 'search']].map(([id, label, icon, count]) => <button key={id} className={view === id ? 'active' : ''} aria-current={view === id ? 'page' : undefined} onClick={() => navigate(id)}><Icon name={icon} />{label}{count !== undefined && <span className="count">{count}</span>}</button>)}
       </nav>
       <div className="collections"><div className="side-heading"><span className="eyebrow">Playlists</span><button className="icon-button" aria-label="Create playlist" title="Create playlist" onClick={() => { setLibraryName(''); setDialog({ type: 'create' }); }}><Icon name="plus" /></button></div>
         <nav className="nav library-nav" aria-label="Playlists">{library.libraries.map(item => <button key={item.id} data-library-id={item.id} onContextMenu={event => openLibraryMenu(event, item)} aria-haspopup="menu" className={`${view === item.id ? 'active' : ''} ${draggingSong ? 'is-drop-ready' : ''} ${libraryDrop === item.id ? 'is-drop-target' : ''}`} aria-current={view === item.id ? 'page' : undefined} onClick={() => navigate(item.id)} onMouseEnter={event => { const name = event.currentTarget.querySelector('.name'); event.currentTarget.title = name.scrollWidth > name.clientWidth ? item.name : ''; }}><Icon name="folder" /><span className="name">{item.name}</span><span className="count">{library.songs.filter(song => (song.library_ids || []).includes(item.id)).length}</span></button>)}</nav>
@@ -1378,7 +1407,7 @@ function App() {
         {renderSavedSongs(listedSongs, view === 'sheets' ? 'loose' : undefined)}
       </section>}
 
-      {view === 'discover' && <section aria-label="Discover music"><div className="discover-toolbar"><form className="search" onSubmit={event => { event.preventDefault(); search(); }}><Icon name="search" /><input type="search" placeholder="Search a song, composer, or artist…" aria-label="Search MIDI sites" required maxLength="120" value={query} onChange={event => setQuery(event.target.value)} /><button className="btn" type="submit">{searching ? <><span className="spinner" />Checking</> : 'Search'}</button></form></div><fieldset className="source-list"><legend>Sources</legend><div className="source-options">{SOURCE_IDS.map(id => <label key={id} className={`source-option ${searchSources.includes(id) ? 'is-on' : ''}`} title={searchSources.length === 1 && searchSources.includes(id) ? `${sourceDescriptions[id]} At least one source stays selected.` : sourceDescriptions[id]}><input type="checkbox" checked={searchSources.includes(id)} onChange={() => toggleSearchSource(id)} /><span>{sourceLabels[id]}{sourceKinds[id] && <small> · {sourceKinds[id]}</small>}</span></label>)}</div></fieldset><div className="search-warnings" role="status">{searchData.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div><p className="section-note" style={{ margin: '0 0 14px' }} aria-live="polite">{searching ? 'Searching catalogs… This can take a moment.' : searchData.searched ? `${searchData.results.length}${Number.isInteger(searchData.totalMatches) ? ` of ${searchData.totalMatches}` : ''} songs shown · ${searchData.results.filter(result => result.piano_only === true).length} piano-only${searchData.hasMore ? ' · More available below' : ''}` : ''}</p><div className="song-list results">{searchData.results.length ? searchData.results.map((result, index) => <SearchResult key={`${result.url}-${index}`} result={result} libraries={library.libraries} busy={busy} onSave={saveResult} notice={notice} />) : searchData.searched ? <EmptyState title="No songs found in this batch." description="Try the next results, or search another title or composer." /> : <EmptyState icon="search" title="Find a song" description="Try a song title, artist, or composer." />}</div>{searchData.hasMore && <button className="btn light load-more" disabled={searching} onClick={() => search(true)}>Load more songs</button>}</section>}
+      {view === 'discover' && <section aria-label="Discover music"><div className="discover-toolbar"><form className="search" onSubmit={event => { event.preventDefault(); search(); }}><Icon name="search" /><input type="search" placeholder="Search a song, composer, or artist…" aria-label="Search MIDI sites" required maxLength="120" value={query} onChange={event => setQuery(event.target.value)} /><button className="btn" type="submit">{searching ? <><span className="spinner" />Checking</> : 'Search'}</button></form></div><fieldset className="source-list"><legend>Sources</legend><div className="source-options">{SOURCE_IDS.map(id => <label key={id} className={`source-option ${searchSources.includes(id) ? 'is-on' : ''}`} title={searchSources.length === 1 && searchSources.includes(id) ? `${sourceDescriptions[id]} At least one source stays selected.` : sourceDescriptions[id]}><input type="checkbox" checked={searchSources.includes(id)} onChange={() => toggleSearchSource(id)} /><span>{sourceLabels[id]}{sourceKinds[id] && <small> · {sourceKinds[id]}</small>}</span></label>)}</div></fieldset><div className="search-warnings" role="status">{searchData.warnings.map((warning, index) => <p key={index}>{warning}</p>)}</div>{searchData.notes.length > 0 && <ul className="search-notes">{searchData.notes.map((note, index) => <li key={index}><strong>{note.source_name}</strong> {note.text}</li>)}</ul>}<p className="section-note" style={{ margin: '0 0 14px' }} aria-live="polite">{searching ? 'Searching catalogs… This can take a moment.' : searchData.searched ? `${searchData.results.length}${Number.isInteger(searchData.totalMatches) ? ` of ${searchData.totalMatches}` : ''} songs shown · ${searchData.results.filter(result => result.piano_only === true).length} piano-only${searchData.hasMore ? ' · More available below' : ''}` : ''}</p><div className="song-list results">{searchData.results.length ? searchData.results.map((result, index) => <SearchResult key={`${result.url}-${index}`} result={result} libraries={library.libraries} busy={busy} onSave={saveResult} notice={notice} />) : searchData.searched ? <EmptyState title="No songs found in this batch." description="Try the next results, or search another title or composer." /> : <EmptyState icon="search" title="Find a song" description="Try a song title, artist, or composer." />}</div>{searchData.hasMore && <button className="btn light load-more" disabled={searching} onClick={() => search(true)}>Load more songs</button>}</section>}
 
     </main>
     {queueVisible && <aside className={`queue-panel ${queueIsDocked ? '' : 'is-open'} ${draggingSong ? 'is-drop-ready' : ''} ${queueDrop ? 'is-drop-target' : ''}`} id="queue-panel" aria-label="Queue">
@@ -1442,7 +1471,7 @@ function App() {
         <fieldset className="adaptation-modes">
           <legend className="dialog-label">Play this way</legend>
           {[
-            ['no_drums', 'All parts except drums · Default', 'Play every instrument part except drums. Keep the original notes, timing, and dynamics.'],
+            ['no_drums', 'All parts except drums', 'Play every instrument part except drums on the piano. Keep the original notes, timing, and dynamics.'],
             ['original', 'Original MIDI · All parts', 'Including drums, exactly as in the file. This computer can’t play drum sounds.'],
             ['piano', 'Piano parts only', 'Keep parts marked as piano; leave the other instruments out.'],
             ['smart', 'Smart piano · Experimental', 'Choose suitable parts and merge their notes into one piano track. Experimental.'],
@@ -1452,7 +1481,7 @@ function App() {
             const disabled = busy || !!reason;
             return <label key={mode} className={`adaptation-mode ${disabled ? 'unavailable' : ''}`} data-reason={reason || undefined} aria-description={reason || undefined}>
               <input type="radio" name="adaptationMode" value={mode} checked={adaptationMode === mode} disabled={disabled} onChange={() => { setAdaptationMode(mode); setAdaptationError(''); }} />
-              <span><strong>{title}</strong><small>{detail}</small></span>
+              <span><strong>{title}{mode === (adaptationData?.settings?.default_mode || status?.adaptation?.settings?.default_mode || 'no_drums') && ' · Default'}</strong><small>{detail}</small></span>
             </label>;
           })}
         </fieldset>

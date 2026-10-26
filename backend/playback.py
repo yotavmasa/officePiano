@@ -159,6 +159,15 @@ class Playback:
                 self.index = position
             del self.song_ids[position + 1:]
             self._save()
+        elif action in ('select', 'finish'):
+            position = self._position(request.get('index'))
+            if action == 'finish' and request.get('song_id') != self.song_ids[position]:
+                raise ValueError('The queue changed. The finished song was left in place.')
+            if not self.running:
+                if action == 'finish':
+                    self.song_ids.pop(position)
+                self.index = min(position, max(0, len(self.song_ids) - 1))
+                self._save()
         elif action == 'remove':
             position = self._position(request.get('index'))
             if position == self.index:

@@ -33,12 +33,13 @@ def search(query, page=1, source='bitmidi'):
     warnings = [error for _, _, error in found if error]
     successes = [(name, result) for name, result, _ in found if result is not None]
     warnings.extend(LABELS[name] + ': ' + warning for name, result in successes for warning in result.get('warnings', []))
+    notes = [{'source': name, 'source_name': LABELS[name], 'text': note} for name, result in successes for note in result.get('notes', [])]
     if not successes:
         raise ValueError(' '.join(warnings))
     batches = [[dict(item, source=name, source_name=LABELS[name]) for item in result['results']] for name, result in successes]
     results = [item for group in zip_longest(*batches) for item in group if item is not None]
     return {'ok': True, 'results': results, 'page': page, 'source': source,
-            'sources': [name for name, _ in successes], 'warnings': warnings,
+            'sources': [name for name, _ in successes], 'warnings': warnings, 'notes': notes,
             'total_matches': sum(result['total_matches'] for _, result in successes) if all(type(result.get('total_matches')) is int for _, result in successes) else None,
             'checked': sum(result.get('checked', 0) for _, result in successes),
             'has_more': any(result.get('has_more') for _, result in successes)}

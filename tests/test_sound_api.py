@@ -153,7 +153,12 @@ class SoundTests(unittest.TestCase):
 
     def test_default_mode_can_be_saved_without_song(self):
         self.change('','smart')
-        self.assertEqual(self.library.get_setting('adaptation')['mode'],'smart')
+        self.assertEqual((self.library.get_setting('adaptation')['mode'],server.sound_config()['mode'],server.sound_settings(self.a['id'])['default_mode']),('smart','smart','smart'))
         self.assertEqual(self.calls,[])
+
+    def test_default_saved_alongside_old_song_choices_is_not_an_explicit_choice(self):
+        self.library.set_setting('adaptation', {'mode':'original','songs':{self.a['id']:{'mode':'smart','parts':[]}}})
+        self.assertEqual((server.sound_settings(self.b['id'])['mode'],server.sound_settings(self.a['id'])['mode']),('no_drums','smart'))
+        with self.assertRaises(ValueError):self.library.set_setting('adaptation', {'mode':'original','songs':{},'mode_chosen':'yes'})
 
 if __name__=='__main__':unittest.main()

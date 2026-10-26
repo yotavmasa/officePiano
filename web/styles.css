@@ -616,7 +616,7 @@ h2 {
 .candidate {
   color:var(--slate)
 }
-.results .btn {
+.results .song-row .btn {
   width:auto;
   height:auto;
   color:var(--forest)
@@ -917,7 +917,7 @@ dialog::backdrop {
     max-width:none;
     font-size:10px
   }
-  .results .btn {
+  .results .song-row .btn {
     font-size:10px;
     padding:8px
   }
@@ -2241,3 +2241,5 @@ html { scrollbar-gutter: stable; }
   .song-list:not(.results) > .song-row.saved-song,
   .song-list > .list-labels.saved-labels { grid-template-columns: 22px 40px minmax(0, 1fr) 40px 34px; }
 }
+.search-notes { display: grid; gap: 4px; margin: 0 0 14px; padding: 0; list-style: none; font-size: 12px; line-height: 1.5; color: var(--slate); }
+.search-notes strong { font-weight: 600; color: var(--ink); }

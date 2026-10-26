@@ -148,7 +148,9 @@ def recognize_songs(shutdown):
 
 
 def sound_config():
-    return LIBRARY.get_setting('adaptation', {'mode': 'no_drums', 'songs': {}})
+    config = LIBRARY.get_setting('adaptation', {'mode': 'no_drums', 'songs': {}})
+    # Older versions saved their own default alongside per-song choices; only an explicit choice overrides no_drums.
+    return config if config.get('mode_chosen') is True else {**config, 'mode': 'no_drums'}
 
 
 def sound_settings(song_id, config=None):
@@ -217,7 +219,7 @@ def change_sound(request):
     elif song_id:
         config['songs'][song_id] = {'mode': mode, 'parts': []}
     else:
-        config['mode'] = mode
+        config['mode'], config['mode_chosen'] = mode, True
     if len(config['songs']) > 1000:
         raise ValueError('Too many saved manual selections. Choose a default playback mode.')
     if song_id:

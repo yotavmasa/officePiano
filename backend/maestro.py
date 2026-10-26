@@ -87,7 +87,7 @@ def search(query, page=1):
             pass
         batch.append(result)
     return {'results': batch, 'has_more': page * 12 < len(found), 'total_matches': len(found),
-            'warnings': ['Recorded performances from the MAESTRO dataset by Google Magenta (CC BY-NC-SA 4.0).']}
+            'notes': ['Recorded performances from the MAESTRO dataset by Google Magenta (CC BY-NC-SA 4.0).']}
 
 
 def download(url):

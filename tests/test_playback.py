@@ -140,6 +140,18 @@ class QueueTests(unittest.TestCase):
         self.assertEqual((self.player.song_ids,self.player.index,self.player.running),(['A'],0,False))
         self.assertEqual(self.make_player().song_ids,['A'])
 
+    def test_listening_elsewhere_moves_and_shrinks_the_saved_queue(self):
+        self.player.mutate({'action':'select','index':1})
+        self.assertEqual((self.player.song_ids,self.player.index),(['A','B','C'],1))
+        with self.assertRaises(ValueError): self.player.mutate({'action':'finish','index':1,'song_id':'C'})
+        self.player.mutate({'action':'finish','index':1,'song_id':'B'})
+        self.assertEqual((self.player.song_ids,self.player.index,self.make_player().song_ids,self.make_player().index),(['A','C'],1,['A','C'],1))
+        self.player.mutate({'action':'finish','index':1,'song_id':'C'})
+        self.assertEqual((self.player.song_ids,self.player.index),(['A'],0))
+        self.player.control('play')
+        self.player.mutate({'action':'select','index':0}); self.player.mutate({'action':'finish','index':0,'song_id':'A'})
+        self.assertEqual((self.player.song_ids,self.player.index,self.player.running),(['A'],0,True))
+
     def test_add_at_index_inserts_and_keeps_current_song(self):
         self.player.control('play', {'index':1})
         before=self.player.snapshot()
