@@ -2095,6 +2095,13 @@ a { color: var(--indigo); }
 /* On desktop the sidebar fills the window and stays put while the page scrolls. */
 @media (min-width: 741px) {
   .sidebar { position: sticky; top: 0; height: 100vh; overflow-y: auto; overscroll-behavior: contain; }
+  /* The main pages stay in place; only the playlist list scrolls. Very short windows fall back to scrolling the sidebar. */
+  .sidebar > :not(.playlists-section) { flex-shrink: 0; }
+  .sidebar .playlists-section { flex: 1 1 0; min-height: 130px; display: flex; flex-direction: column; }
+  .playlists-section .library-nav { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; scrollbar-width: thin; margin: 0 -6px; padding: 0 6px; }
+}
+@media (min-width: 741px) and (max-height: 720px) {
+  .sidebar { gap: 20px; padding-top: 24px; }
 }
 .side-wifi { display: flex; align-items: center; gap: 8px; margin: 4px 11px 0; padding: 8px 12px; border-radius: var(--radius-pill); font-size: 13px; color: var(--indigo); }
 .side-wifi:hover { background: var(--periwinkle-20); }
