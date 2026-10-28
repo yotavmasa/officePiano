@@ -2265,3 +2265,4 @@ html { scrollbar-gutter: stable; }
 }
 .search-notes { display: grid; gap: 4px; margin: 0 0 14px; padding: 0; list-style: none; font-size: 12px; line-height: 1.5; color: var(--slate); }
 .search-notes strong { font-weight: 600; color: var(--ink); }
+.saved-heading-tools .song-sort { width: auto; flex-shrink: 0; min-height: 43px; margin: 0; padding-top: 0; padding-bottom: 0; border-radius: 999px; }
