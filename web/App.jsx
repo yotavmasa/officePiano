@@ -61,6 +61,14 @@ const time = seconds => {
   return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
 };
 const songTitle = name => String(name || '').replace(/\.midi?$/i, '');
+const compareText = (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base', numeric: true });
+const byName = (a, b) => compareText(songTitle(a.name), songTitle(b.name));
+// All songs is always shown sorted, newest first by default; songs without an artist go last.
+const SONG_SORTS = {
+  added: { label: 'Date added', compare: (a, b) => (b.created || 0) - (a.created || 0) },
+  name: { label: 'Name', compare: byName },
+  artist: { label: 'Artist', compare: (a, b) => (!a.artist - !b.artist) || compareText(a.artist || '', b.artist || '') || byName(a, b) },
+};
 function reorderedSongIds(fullIds, visibleIds, from, to) {
   const ordered = [...visibleIds];
   const [moved] = ordered.splice(from, 1);
@@ -138,14 +146,14 @@ function IconButton({ icon, label, onClick, disabled = false, active = false, st
   return <button className={active ? 'favorited' : ''} onClick={onClick} disabled={disabled} title={label} aria-label={label}><Icon name={icon} style={style} /></button>;
 }
 
-function Dialog({ title, onClose, children, closeDisabled = false }) {
+function Dialog({ title, onClose, children, closeDisabled = false, className }) {
   const ref = useRef(null);
   useEffect(() => {
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();
     return () => { if (dialog?.open) dialog.close(); };
   }, []);
-  return <dialog ref={ref} onCancel={event => { event.preventDefault(); if (!closeDisabled) onClose(); }}>
+  return <dialog ref={ref} className={className} onCancel={event => { event.preventDefault(); if (!closeDisabled) onClose(); }}>
     <div className="dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Close dialog" title="Close" disabled={closeDisabled} onClick={onClose}><Icon name="close" /></button></div>
     {children}
   </dialog>;
@@ -338,6 +346,7 @@ function App() {
   const [songArtist, setSongArtist] = useState('');
   const [songAlbum, setSongAlbum] = useState('');
   const [filter, setFilter] = useState('');
+  const [songSort, setSongSort] = useState(() => SONG_SORTS[storage.get('piano-song-sort')] ? storage.get('piano-song-sort') : 'added');
   const [seekPreview, setSeekPreview] = useState(null);
   const [volume, setVolume] = useState(100);
   const [query, setQuery] = useState('');
@@ -765,6 +774,8 @@ function App() {
   const sidebarLibraries = [...library.libraries].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base', numeric: true }));
   const savedOrder = selectedLibrary?.song_ids || library.songs.map(song => song.id);
   const savedSongs = library.songs.filter(song => (view === 'all' && song.source_kind !== 'sheet' || view === 'sheets' && song.source_kind === 'sheet' || view === 'favorites' && song.favorite || (song.library_ids || []).includes(view)) && [song.name, song.artist, song.album].filter(Boolean).join(' ').toLowerCase().includes(filter.trim().toLowerCase())).sort((a, b) => savedOrder.indexOf(a.id) - savedOrder.indexOf(b.id));
+  const sortedView = view === 'all' && SONG_SORTS[songSort].compare;
+  if (sortedView) savedSongs.sort(sortedView);
   const sheetGroups = groupSheetSongs(sheets.items, sheets.song_sources || sheets.items.filter(item => item.song_id).map(item => ({ song_id: item.song_id, source_id: item.book_id || item.id })), savedSongs);
   const listedSongs = view === 'sheets' ? sheetGroups.looseSongs : savedSongs;
   const bookIds = new Set(sheetGroups.books.map(group => group.book.id));
@@ -1286,7 +1297,7 @@ function App() {
 
   function renderSavedSongs(songs, groupId) {
     const endSongDrag = () => { setDraggingSong(''); setQueueDrop(null); setLibraryDrop(''); };
-    return <SortableList items={songs.map(song => song.id)} getLabel={id => songTitle(library.songs.find(song => song.id === id)?.name)} onStart={from => { startReorder('songs', from, groupId); setDraggingSong(songs[from]?.id || ''); }} onEnd={to => { endSongDrag(); return finishReorder(to); }} onCancel={() => { endSongDrag(); cancelReorder(); }} {...songQueueDrag}>
+    return <SortableList items={songs.map(song => song.id)} getLabel={id => songTitle(library.songs.find(song => song.id === id)?.name)} onStart={from => { startReorder('songs', from, groupId); setDraggingSong(songs[from]?.id || ''); }} onEnd={to => { endSongDrag(); if (!sortedView) return finishReorder(to); cancelReorder(); }} onCancel={() => { endSongDrag(); cancelReorder(); }} {...songQueueDrag}>
         <div className="song-list">{!songs.length ? <EmptyState icon={filter ? 'search' : view === 'favorites' ? 'heart' : 'note'} title={filter ? 'No matching pieces' : view === 'favorites' ? 'Keep your favorites close' : 'Make room for a little music.'} description={filter ? 'Try another title.' : view === 'favorites' ? 'Tap the heart beside a saved song to keep it here.' : view === 'sheets' ? 'Upload sheet music above. Converted pieces will appear here.' : 'Upload a MIDI file, or find a new piece in Discover.'} button={filter || view === 'favorites' || view === 'sheets' ? null : 'Discover music'} onClick={() => navigate('discover')} /> : <><div className="list-labels saved-labels"><label className="song-check" title="Select all"><input type="checkbox" aria-label="Select all songs in this list" checked={songs.every(song => selectedIds.includes(song.id))} ref={element => { if (element) element.indeterminate = songs.some(song => selectedIds.includes(song.id)) && !songs.every(song => selectedIds.includes(song.id)); }} onChange={event => setSelected(previous => event.target.checked ? [...new Set([...previous, ...songs.map(song => song.id)])] : previous.filter(id => !songs.some(song => song.id === id)))} /></label><span /><span>Piece</span><span className="channels-label">Channels</span><span>Time</span><span /></div>{songs.map((song, index) => {
           return <SortableItem key={song.id} id={song.id} disabled={busy}>{rowProps => <div {...rowProps} className={`song-row saved-song ${playerSongId === song.id ? 'is-current' : ''} ${draggingSong === song.id ? 'is-queue-dragging' : ''} ${selectedIds.includes(song.id) ? 'is-selected' : ''}`} onClick={event => songRowClick(event, song)} onContextMenu={event => { event.preventDefault(); openSongMenu(song, event.clientX, event.clientY, event.currentTarget.querySelector('.song-more')); }}><label className="song-check" title={`Select ${song.name}`}><input type="checkbox" checked={selectedIds.includes(song.id)} aria-label={`Select ${song.name}`} onChange={() => toggleSelected(song.id)} /></label><div className="mini-art">{coverFor(song) ? <img className="song-row-icon song-row-cover" src={coverFor(song)} alt="" loading="lazy" onError={() => setBrokenCovers(previous => new Set(previous).add(song.id))} /> : <span className="song-row-icon" aria-hidden="true"><Icon name="note" /></span>}</div><div className="song-info"><button className="song-name song-name-button" title={`Play ${song.name}`} aria-label={`Play ${song.name}`} disabled={onDevice ? local.loading : busy} onClick={() => playSong(song, { showPlayer: false })}>{songTitle(song.name)}</button><div className="song-record">{(song.artist || song.album) && <span className="song-record-text">{[song.artist, song.album].filter(Boolean).join(' · ')}</span>}<span className="song-source">{song.source_url ? `From ${providerName(song.source_url)}` : song.source_kind === 'sheet' ? 'From sheet music' : 'Uploaded'}</span></div>{groupId && (sheets.song_sources || []).filter(source => source.song_id === song.id && source.source_id === groupId).slice(0, 1).map(source => <div key={source.song_id}>{source.pages?.length > 0 && <p className="sheet-song-pages">PDF {source.pages.length === 1 ? 'page' : 'pages'} {source.pages.join(', ')}</p>}{source.warning && <p className="sheet-file-warning">{source.warning}</p>}</div>)}</div><span className="channels" title="MIDI channels that play notes">{song.channels ?? '–'}</span><span className="duration">{time(song.duration_seconds)}</span><button type="button" className="song-more" aria-label={`More actions for ${song.name}`} title="More actions" aria-haspopup="menu" aria-expanded={songMenu?.songId === song.id} onClick={event => { const box = event.currentTarget.getBoundingClientRect(); openSongMenu(song, box.right - 200, box.bottom + 4, event.currentTarget); }}><Icon name="more" /></button></div>}</SortableItem>;
         })}</>}</div></SortableList>;
@@ -1479,7 +1490,7 @@ function App() {
         </div>
       </div>}
       {view !== 'player' && view !== 'discover' && (view !== 'sheets' || listedSongs.length > 0 || !sheets.items.length) && <section aria-label="Saved music">
-        <div className="content-heading"><div><div className="heading-title"><h2>{view === 'sheets' && sheetGroups.books.length ? 'Other sheet songs' : viewTitle}</h2>{selectedLibrary && <button type="button" className="icon-button playlist-rename" aria-label="Rename playlist" title="Rename playlist" disabled={busy} onClick={() => { setLibraryName(selectedLibrary.name); setDialog({ type: 'rename', libraryId: selectedLibrary.id }); }}><Icon name="edit" /></button>}</div>{viewNote && <p className="section-note">{viewNote}</p>}</div><div className="saved-heading-tools">{view !== 'sheets' && <><label className="search"><Icon name="search" /><input type="search" placeholder="Find a saved song…" aria-label="Filter saved songs" value={filter} onChange={event => setFilter(event.target.value)} /></label><button type="button" className="playlist-play" aria-label={`Play ${viewTitle}`} title={`Play ${viewTitle}`} disabled={!savedSongs.length || (onDevice ? local.loading : busy)} onClick={() => playSongIds(savedSongs.map(song => song.id))}><Icon name="play" /></button></>}</div></div>
+        <div className="content-heading"><div><div className="heading-title"><h2>{view === 'sheets' && sheetGroups.books.length ? 'Other sheet songs' : viewTitle}</h2>{selectedLibrary && <button type="button" className="icon-button playlist-rename" aria-label="Rename playlist" title="Rename playlist" disabled={busy} onClick={() => { setLibraryName(selectedLibrary.name); setDialog({ type: 'rename', libraryId: selectedLibrary.id }); }}><Icon name="edit" /></button>}</div>{viewNote && <p className="section-note">{viewNote}</p>}</div><div className="saved-heading-tools">{view !== 'sheets' && <>{view === 'all' && <select className="field song-sort" aria-label="Sort songs" title="Sort songs" value={songSort} onChange={event => { setSongSort(event.target.value); storage.set('piano-song-sort', event.target.value); }}>{Object.entries(SONG_SORTS).map(([id, sort]) => <option key={id} value={id}>{sort.label}</option>)}</select>}<label className="search"><Icon name="search" /><input type="search" placeholder="Find a saved song…" aria-label="Filter saved songs" value={filter} onChange={event => setFilter(event.target.value)} /></label><button type="button" className="playlist-play" aria-label={`Play ${viewTitle}`} title={`Play ${viewTitle}`} disabled={!savedSongs.length || (onDevice ? local.loading : busy)} onClick={() => playSongIds(savedSongs.map(song => song.id))}><Icon name="play" /></button></>}</div></div>
         {renderSavedSongs(listedSongs, view === 'sheets' ? 'loose' : undefined)}
       </section>}
 
@@ -1588,7 +1599,7 @@ function App() {
       if (result) setDialog(null);
     }}><label htmlFor="libraryName" className="dialog-label">Playlist name</label><input id="libraryName" className="field" placeholder="Quiet mornings" required maxLength="80" value={libraryName} onChange={event => setLibraryName(event.target.value)} autoFocus /><div className="dialog-actions"><button type="button" className="btn light" onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy}>{dialog.type === 'rename' ? 'Save name' : 'Create playlist'}</button></div></form></Dialog>}
     {dialog?.type === 'assign' && <Dialog title="Save to a playlist" onClose={() => setDialog(null)}><p className="dialog-hint">{assignedSong?.name}</p>{library.libraries.length ? library.libraries.map(item => <label className="check-row" key={item.id}><input type="checkbox" disabled={busy} checked={(assignedSong?.library_ids || []).includes(item.id)} onChange={event => run(() => post('/api/library', { action: 'assign', song_id: assignedSong.id, library_id: item.id, value: event.target.checked }))} /><span>{item.name}</span></label>) : null}<NewLibraryRow busy={busy} onCreate={name => createLibraryWith(name, [assignedSong.id])} /><div className="dialog-actions"><button className="btn" onClick={() => setDialog(null)}>Done</button></div></Dialog>}
-    {dialog?.type === 'rename_song' && <Dialog key={dialog.songId} title="Edit details" closeDisabled={busy} onClose={closeEditDetails}><form onSubmit={async event => {
+    {dialog?.type === 'rename_song' && <Dialog key={dialog.songId} title="Edit details" className="edit-details-dialog" closeDisabled={busy} onClose={closeEditDetails}><form onSubmit={async event => {
       event.preventDefault();
       const original = typeof assignedSong?.recognition?.artwork === 'string' ? assignedSong.recognition.artwork : '';
       const result = await run(() => post('/api/library', { action: 'edit_song', song_id: dialog.songId, name: libraryName.trim(), artist: songArtist.trim(), album: songAlbum.trim(), ...(songCover !== original ? { artwork: songCover } : {}) }), 'Song updated.');

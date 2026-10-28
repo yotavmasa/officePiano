@@ -2143,6 +2143,13 @@ a { color: var(--indigo); }
 .edit-details-search { margin: 6px 0 4px; padding-top: 14px; border-top: 1px solid var(--periwinkle-40); }
 .itunes-result.is-chosen { background: var(--indigo-20); box-shadow: inset 0 0 0 1.33px var(--indigo); }
 @media (max-width: 520px) { .edit-details-cover { flex-basis: 56px; width: 56px; height: 56px; } }
+/* Edit details fits the window: only the search results scroll, so Save stays visible. */
+.edit-details-dialog[open] { display: flex; flex-direction: column; max-height: calc(100dvh - 32px); overflow-y: auto; }
+.edit-details-dialog > *, .edit-details-dialog form > * { flex-shrink: 0; }
+.edit-details-dialog form, .edit-details-dialog .edit-details-search { display: flex; flex-direction: column; flex: 0 1 auto; min-height: 0; }
+.edit-details-dialog .edit-details-search > :not(.itunes-results) { flex-shrink: 0; }
+.edit-details-dialog .itunes-results { flex: 0 1 auto; min-height: 112px; }
+.edit-details-dialog form > .edit-details-search { flex-shrink: 1; }
 .top-notice.visible { display: flex; align-items: flex-start; gap: 12px; }
 .top-notice-text { flex: 1; min-width: 0; }
 .top-notice-close { flex: 0 0 auto; width: 24px; height: 24px; margin: -2px -6px -2px 0; display: grid; place-items: center; border-radius: var(--radius-sm); color: inherit; opacity: .7; }
@@ -2258,3 +2265,4 @@ html { scrollbar-gutter: stable; }
 }
 .search-notes { display: grid; gap: 4px; margin: 0 0 14px; padding: 0; list-style: none; font-size: 12px; line-height: 1.5; color: var(--slate); }
 .search-notes strong { font-weight: 600; color: var(--ink); }
+.saved-heading-tools .song-sort { width: auto; flex-shrink: 0; min-height: 43px; margin: 0; padding-top: 0; padding-bottom: 0; border-radius: 999px; }
