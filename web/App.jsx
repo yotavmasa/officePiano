@@ -138,14 +138,14 @@ function IconButton({ icon, label, onClick, disabled = false, active = false, st
   return <button className={active ? 'favorited' : ''} onClick={onClick} disabled={disabled} title={label} aria-label={label}><Icon name={icon} style={style} /></button>;
 }
 
-function Dialog({ title, onClose, children, closeDisabled = false }) {
+function Dialog({ title, onClose, children, closeDisabled = false, className }) {
   const ref = useRef(null);
   useEffect(() => {
     const dialog = ref.current;
     if (dialog && !dialog.open) dialog.showModal();
     return () => { if (dialog?.open) dialog.close(); };
   }, []);
-  return <dialog ref={ref} onCancel={event => { event.preventDefault(); if (!closeDisabled) onClose(); }}>
+  return <dialog ref={ref} className={className} onCancel={event => { event.preventDefault(); if (!closeDisabled) onClose(); }}>
     <div className="dialog-head"><h2>{title}</h2><button type="button" className="icon-button" aria-label="Close dialog" title="Close" disabled={closeDisabled} onClick={onClose}><Icon name="close" /></button></div>
     {children}
   </dialog>;
@@ -1588,7 +1588,7 @@ function App() {
       if (result) setDialog(null);
     }}><label htmlFor="libraryName" className="dialog-label">Playlist name</label><input id="libraryName" className="field" placeholder="Quiet mornings" required maxLength="80" value={libraryName} onChange={event => setLibraryName(event.target.value)} autoFocus /><div className="dialog-actions"><button type="button" className="btn light" onClick={() => setDialog(null)}>Cancel</button><button className="btn" disabled={busy}>{dialog.type === 'rename' ? 'Save name' : 'Create playlist'}</button></div></form></Dialog>}
     {dialog?.type === 'assign' && <Dialog title="Save to a playlist" onClose={() => setDialog(null)}><p className="dialog-hint">{assignedSong?.name}</p>{library.libraries.length ? library.libraries.map(item => <label className="check-row" key={item.id}><input type="checkbox" disabled={busy} checked={(assignedSong?.library_ids || []).includes(item.id)} onChange={event => run(() => post('/api/library', { action: 'assign', song_id: assignedSong.id, library_id: item.id, value: event.target.checked }))} /><span>{item.name}</span></label>) : null}<NewLibraryRow busy={busy} onCreate={name => createLibraryWith(name, [assignedSong.id])} /><div className="dialog-actions"><button className="btn" onClick={() => setDialog(null)}>Done</button></div></Dialog>}
-    {dialog?.type === 'rename_song' && <Dialog key={dialog.songId} title="Edit details" closeDisabled={busy} onClose={closeEditDetails}><form onSubmit={async event => {
+    {dialog?.type === 'rename_song' && <Dialog key={dialog.songId} title="Edit details" className="edit-details-dialog" closeDisabled={busy} onClose={closeEditDetails}><form onSubmit={async event => {
       event.preventDefault();
       const original = typeof assignedSong?.recognition?.artwork === 'string' ? assignedSong.recognition.artwork : '';
       const result = await run(() => post('/api/library', { action: 'edit_song', song_id: dialog.songId, name: libraryName.trim(), artist: songArtist.trim(), album: songAlbum.trim(), ...(songCover !== original ? { artwork: songCover } : {}) }), 'Song updated.');
